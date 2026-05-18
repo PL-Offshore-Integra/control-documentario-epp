@@ -402,7 +402,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
                       : <span style={{color:"var(--muted)",fontSize:11}}>—</span>}
                   </td>
                   <td>
-                    <div style={{display:"flex",gap:4"}}>
+                    <div style={{display:"flex",gap:4}}>
                       <button className="btn btn-sm btn-ghost" onClick={()=>setShowDoc(doc||{empleado_id:empleado.id,tipo_documento_id:tipo.id})}>
                         {doc ? "✏️" : "📤"}
                       </button>
