@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./lib/supabase";
 
-const PORTAL_URL = "https://erp-portal-fawn.vercel.app";
+const PORTAL_URL = "https://integra.ploffshore.com";
 const fmtDate = d => d ? new Date(d + "T00:00:00").toLocaleDateString("es-AR") : "—";
 
 function diasHasta(fechaStr) {
@@ -997,8 +997,106 @@ function PageProyeccionCompras({ empleados, eppTipos, talles }) {
   );
 }
 
+// ─── LOGIN (estética INTEGRA / PL Offshore, igual al módulo Reparaciones) ──
+function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) return setError("Completá usuario y contraseña");
+    setLoading(true); setError("");
+    const { error: e } = await supabase.auth.signInWithPassword({ email, password });
+    if (e) { setError("Usuario o contraseña incorrectos"); setLoading(false); }
+  };
+  const handleKey = (e) => { if (e.key === "Enter") handleLogin(); };
+
+  const loginCSS = `
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+    .login-page{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 560px;background:#FFFFFF;font-family:'IBM Plex Sans',sans-serif;color:#0F1419;text-align:left}
+    .login-split{display:contents}
+    .login-left{display:flex;flex-direction:column;justify-content:space-between;gap:48px;padding:56px 64px;background:#002247;border:0;text-align:left}
+    .login-left-integra-wrap{margin:0}
+    .login-left-integra-img{height:52px;width:auto;object-fit:contain;opacity:1;display:block}
+    .login-left-divider{width:100%;height:1px;background:rgba(255,255,255,.14);margin:24px 0}
+    .login-left-company{display:flex;align-items:center;gap:14px;margin:0}
+    .login-left-company-logo{width:40px;height:40px;border-radius:4px;object-fit:contain;border:0;background:rgba(255,255,255,.14);padding:4px}
+    .login-left-company-name{font:600 24px/1.25 'IBM Plex Sans',sans-serif;color:#fff;letter-spacing:0}
+    .login-left-line{width:56px;height:3px;background:#F8BC05;margin:24px 0}
+    .login-left-sub{font:400 15px/1.55 'IBM Plex Sans',sans-serif;color:rgba(255,255,255,.82);max-width:420px;font-style:normal}
+    .login-right{width:auto;display:flex;align-items:center;justify-content:center;padding:56px 64px;background:#FFFFFF}
+    .login-card{width:100%;max-width:420px;background:transparent;border:0;border-radius:0;padding:0;backdrop-filter:none;text-align:left}
+    .login-card-eyebrow{font:500 11px/1.2 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#4A5560;text-transform:uppercase;margin-bottom:12px}
+    .login-card-title{font:600 24px/1.25 'IBM Plex Sans',sans-serif;color:#082F4E;margin-bottom:8px}
+    .login-card-sub{font:400 15px/1.55 'IBM Plex Sans',sans-serif;color:#4A5560;letter-spacing:0;margin-bottom:28px;text-transform:none}
+    .login-fg{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+    .login-fg label{font:500 11px/1.2 'IBM Plex Mono',monospace;color:#4A5560;letter-spacing:.08em;text-transform:uppercase}
+    .login-fg input{border:1px solid #C9D0D6;border-radius:4px;height:40px;padding:0 12px;font:400 14px/1.2 'IBM Plex Sans',sans-serif;color:#0F1419;background:#FFFFFF;outline:none;transition:border-color 120ms cubic-bezier(.2,0,.38,.9)}
+    .login-fg input::placeholder{color:#7A8792}
+    .login-fg input:focus{border-width:2px;border-color:#002247;padding:0 11px}
+    .login-btn{width:100%;height:44px;padding:0 16px;margin-top:24px;background:#F8BC05;color:#002247;border:none;border-radius:4px;font:600 15px/1.2 'IBM Plex Sans',sans-serif;cursor:pointer;transition:background-color 120ms cubic-bezier(.2,0,.38,.9);letter-spacing:0}
+    .login-btn:hover{background:#DCA704}
+    .login-btn:disabled{background:#E4E8EC;color:#7A8792;cursor:not-allowed}
+    .login-error{background:#FFFFFF;color:#0F1419;border:1px solid #E4E8EC;border-left:3px solid #B3261E;border-radius:4px;padding:12px 16px;font:400 13px/1.45 'IBM Plex Sans',sans-serif;margin-bottom:16px}
+    .login-footer{text-align:left;font:500 11px/1.2 'IBM Plex Mono',monospace;color:#4A5560;margin-top:32px;letter-spacing:.06em}
+    @media(max-width:900px){
+      .login-page{grid-template-columns:1fr}
+      .login-left{padding:40px 24px;gap:32px}
+      .login-left-integra-img{height:40px}
+      .login-left-sub{max-width:100%}
+      .login-right{padding:40px 24px}
+    }
+  `;
+
+  return (
+    <>
+      <style>{loginCSS}</style>
+      <div className="login-page">
+        <div className="login-split">
+          <div className="login-left">
+            <div className="login-left-integra-wrap">
+              <img src="/integra-logo-white-noclaim.svg" alt="INTEGRA" className="login-left-integra-img" />
+            </div>
+            <div className="login-left-divider" />
+            <div className="login-left-company">
+              <img src="/PL.png" alt="PL Offshore" className="login-left-company-logo" />
+              <div className="login-left-company-name">PL Offshore | Control Documentario</div>
+            </div>
+            <div className="login-left-line" />
+            <div className="login-left-sub">We Find the Way, or We Make One.</div>
+          </div>
+
+          <div className="login-right">
+            <div className="login-card">
+              <div className="login-card-eyebrow">PL Offshore | Control Documentario</div>
+              <div className="login-card-title">Acceso al portal</div>
+              <div className="login-card-sub">Solo personal autorizado</div>
+              {error && <div className="login-error">{error}</div>}
+              <div className="login-fg">
+                <label>Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={handleKey} placeholder="correo@paranalogistica.com.ar" autoFocus />
+              </div>
+              <div className="login-fg">
+                <label>Contraseña</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={handleKey} placeholder="••••••••" />
+              </div>
+              <button className="login-btn" onClick={handleLogin} disabled={loading || !email || !password}>
+                {loading ? "Ingresando..." : "Ingresar →"}
+              </button>
+              <div className="login-footer">PL Offshore · Control Documentario · Confidencial</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── APP PRINCIPAL ─────────────────────────────────────────────────────────
 export default function App() {
+  const [session, setSession] = useState(undefined);
+  const [userEmail, setUserEmail] = useState("");
   const [page, setPage] = useState("dashboard");
   const [empleados, setEmpleados] = useState([]);
   const [documentos, setDocumentos] = useState([]);
@@ -1010,6 +1108,20 @@ export default function App() {
   const [detalleExterno, setDetalleExterno] = useState(null);
 
   const notify = useCallback((msg) => { setNotif(msg); }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session || null);
+      setUserEmail(session?.user?.email || "");
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess || null);
+      setUserEmail(sess?.user?.email || "");
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => { await supabase.auth.signOut(); setSession(null); setUserEmail(""); };
 
   const loadAll = useCallback(async () => {
     try {
@@ -1023,7 +1135,7 @@ export default function App() {
     finally { setLoading(false); }
   }, [notify]);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => { if (session) loadAll(); }, [session, loadAll]);
 
   const handleVerEmpleado = (emp) => { setDetalleExterno(emp); setPage("efectivos"); };
 
@@ -1049,6 +1161,15 @@ export default function App() {
     if (!d.fecha_vto) return false;
     return diasHasta(d.fecha_vto) < 0;
   }).length;
+
+  if (session === undefined) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"var(--navy)",color:"rgba(255,255,255,.4)",fontSize:11,letterSpacing:2,textTransform:"uppercase",fontFamily:"var(--mono)"}}>
+      <style>{CSS}</style>
+      Cargando...
+    </div>
+  );
+
+  if (!session) return <LoginScreen />;
 
   if (loading) return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"var(--bg)",color:"var(--muted)",fontSize:14,gap:10}}>
@@ -1082,6 +1203,10 @@ export default function App() {
             ))}
             <div className="nav-section" style={{marginTop:8}}>Sistema</div>
             <div className="ni back" onClick={()=>window.location.href=PORTAL_URL}>← Portal</div>
+            <div className="ni back" onClick={handleLogout}>⎋ Cerrar sesión</div>
+          </div>
+          <div style={{padding:"10px 16px",borderTop:"1px solid rgba(255,255,255,.1)",fontSize:10,color:"rgba(255,255,255,.4)",fontFamily:"var(--mono)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {userEmail}
           </div>
         </aside>
 
