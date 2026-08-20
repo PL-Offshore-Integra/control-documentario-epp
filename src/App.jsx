@@ -222,15 +222,35 @@ function DiasChip({ fechaStr }) {
 }
 
 // ─── MODAL EMPLEADO ────────────────────────────────────────────────────────
+// Separa "apellido_nombre" existente en apellido / nombre (heurística: primera palabra = apellido).
+// Solo se usa para precargar el formulario al editar; el dato guardado sigue siendo un único campo.
+function splitApellidoNombre(str) {
+  const partes = (str || "").trim().split(/\s+/);
+  if (partes.length <= 1) return { apellido: partes[0] || "", nombre: "" };
+  return { apellido: partes[0], nombre: partes.slice(1).join(" ") };
+}
+
 function ModalEmpleado({ emp, onClose, onSave, notify }) {
-  const [form, setForm] = useState(emp || { apellido_nombre:"", dni:"", libreta:"", categoria:"", tipo:"efectivo", activo:true });
+  const [form, setForm] = useState(() => {
+    if (emp) {
+      const { apellido, nombre } = splitApellidoNombre(emp.apellido_nombre);
+      return { ...emp, apellido, nombre };
+    }
+    return { apellido:"", nombre:"", dni:"", libreta:"", categoria:"", tipo:"efectivo", activo:true };
+  });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(p => ({...p,[k]:v}));
 
   const handleSave = async () => {
-    if (!form.apellido_nombre.trim()) { notify("Ingresá el nombre"); return; }
+    if (!form.apellido.trim()) { notify("Ingresá el apellido"); return; }
+    if (!form.nombre.trim()) { notify("Ingresá el nombre"); return; }
     setSaving(true);
-    try { const saved = await api.upsertEmpleado(form); onSave(saved); onClose(); }
+    try {
+      const { apellido, nombre, ...resto } = form;
+      const payload = { ...resto, apellido_nombre: `${apellido.trim()} ${nombre.trim()}`.trim() };
+      const saved = await api.upsertEmpleado(payload);
+      onSave(saved); onClose();
+    }
     catch(e) { notify("Error: " + e.message); }
     finally { setSaving(false); }
   };
@@ -243,7 +263,10 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
           <button className="mclose" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
-          <div className="fg"><label>Apellido y Nombre *</label><input value={form.apellido_nombre} onChange={e=>set("apellido_nombre",e.target.value)}/></div>
+          <div className="fg-row">
+            <div className="fg"><label>Apellido *</label><input value={form.apellido} onChange={e=>set("apellido",e.target.value)}/></div>
+            <div className="fg"><label>Nombre *</label><input value={form.nombre} onChange={e=>set("nombre",e.target.value)}/></div>
+          </div>
           <div className="fg-row">
             <div className="fg"><label>DNI</label><input value={form.dni||""} onChange={e=>set("dni",e.target.value)}/></div>
             <div className="fg"><label>Libreta</label><input value={form.libreta||""} onChange={e=>set("libreta",e.target.value)}/></div>
