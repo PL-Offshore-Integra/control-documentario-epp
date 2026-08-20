@@ -1402,7 +1402,8 @@ export default function App() {
       <style>{CSS}</style>
 
       <header className="appbar">
-        <img src="/integra-isotipo-white.svg" alt="INTEGRA" className="appbar-iso" />
+        {/* Si Marketing entrega el isotipo suelto, cambiar por /integra-isotipo-white.svg */}
+        <img src="/integra-logo-white-noclaim.svg" alt="INTEGRA" className="appbar-iso" />
         <span className="appbar-div" />
         <span className="appbar-instance">PL Offshore</span>
         <input className="appbar-search" type="search" disabled placeholder="Buscar en todo INTEGRA" aria-label="Buscar" />
