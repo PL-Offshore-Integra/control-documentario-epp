@@ -476,7 +476,7 @@ function ModalEntregaEPP({ empleado, eppTipos, talles, onClose, onSave, notify }
           <div className="modal-body print-area">
             <div style={{border:"1px solid #ccc",padding:20,fontFamily:"Arial,sans-serif",fontSize:12}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                <div><strong>PARANA LOGISTICA S.A.</strong><br/>CUIT: 30-71103347-1<br/>Alvear 653, San Fernando</div>
+                <div><strong>PL OFFSHORE S.A.</strong><br/>CUIT: 30-71103347-1<br/>Alvear 653, San Fernando</div>
                 <div style={{textAlign:"right",fontSize:10}}>N° 07.03.01-01<br/>Pág. 1 de 1</div>
               </div>
               <div style={{textAlign:"center",fontWeight:700,fontSize:14,margin:"8px 0",borderTop:"2px solid #213363",borderBottom:"2px solid #213363",padding:"6px 0"}}>
@@ -1044,7 +1044,7 @@ export default function App() {
           <div className="sidebar-header">
             <img src="/pL.png" alt="" style={{width:34,height:34,objectFit:"cover",borderRadius:"50%",border:"2px solid rgba(255,255,255,.2)"}} onError={e=>e.target.style.display="none"}/>
             <div>
-              <div className="sidebar-logo-main">Parana Logística</div>
+              <div className="sidebar-logo-main">PL Offshore</div>
               <div className="sidebar-logo-sub">Control Doc. y EPP</div>
             </div>
           </div>
