@@ -1301,7 +1301,7 @@ function LoginScreen() {
 
 /* Título, bajada y grupo de cada pantalla. Un solo lugar que lo declara. */
 const SECCIONES = {
-  dashboard:  { grupo:"Control",  titulo:"Alertas de documentación", sub:"Documentos vencidos, por vencer y faltantes de la tripulación activa. El orden sigue la criticidad, no la fecha de carga." },
+  dashboard:  { grupo:"Control",  titulo:"Alerta de documentacion de Tripulantes", sub:"Documentos vencidos, por vencer y faltantes de la tripulación activa. El orden sigue la criticidad, no la fecha de carga." },
   efectivos:  { grupo:"Personal", titulo:"Tripulantes efectivos",    sub:"Legajo documental de cada tripulante embarcado, con el avance de la checklist obligatoria." },
   relevos:    { grupo:"Personal", titulo:"Tripulantes relevos",      sub:"Personal de relevo con legajo abierto, disponible para embarque." },
   epp_talles: { grupo:"EPP",      titulo:"Registro de talles",        sub:"Talle declarado por tripulante y por tipo de EPP. Es la base de la proyección de compras." },
