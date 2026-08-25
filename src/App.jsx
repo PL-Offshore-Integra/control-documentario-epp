@@ -802,20 +802,17 @@ function ModalEntregaEPP({ empleado, eppTipos, talles, onClose, onSave, notify }
 }
 
 // ─── PAGE: DASHBOARD ───────────────────────────────────────────────────────
-// Todo en una sola vista: filtro por tipo de tripulante, puesto, tipo de
-// documento y rango de vencimiento, todos combinables entre sí.
-// Sin rango de fechas: se ve la alerta de siempre (vencido / crítico / a
-// vencer / sin documentar). Con "vencimiento desde/hasta" completo: se ve,
-// en cambio, todo lo que vence en ese período puntual, sea o no urgente hoy.
+// Todo en una sola vista: filtro por tipo de tripulante, puesto y tipo de
+// documento, todos combinables entre sí. El desplegable de documento lista
+// los 8 tipos de documento existentes, no solo los que tienen vencimiento:
+// para los que no vencen, filtrar por ese tipo muestra quién no lo cargó.
 function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
   const [tipoPersona, setTipoPersona] = useState("");
   const [puesto, setPuesto] = useState("");
   const [tipoDocumento, setTipoDocumento] = useState("");
-  const [desde, setDesde] = useState("");
-  const [hasta, setHasta] = useState("");
 
   const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
-  const tiposDocFiltrados = tipoDocumento ? tiposConVto.filter(t=>t.id===tipoDocumento) : tiposConVto;
+  const tiposDocFiltrados = tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento) : tiposConVto;
   const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo).map(e=>e.categoria).filter(Boolean))].sort();
 
   const empleadosFiltrados = empleados.filter(e=>e.activo &&
@@ -823,42 +820,25 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
     (!puesto || e.categoria===puesto)
   );
 
-  const hayRangoFecha = desde && hasta;
-  let filas = [];
-
-  if (hayRangoFecha) {
-    // Modo período: cualquier documento (vigente, a vencer o ya vencido) cuyo vencimiento cae en el rango.
-    filas = documentos
-      .filter(d => d.fecha_vto && d.fecha_vto >= desde && d.fecha_vto <= hasta)
-      .filter(d => !tipoDocumento || d.tipo_documento_id === tipoDocumento)
-      .map(d => ({
-        emp: empleadosFiltrados.find(e=>e.id===d.empleado_id),
-        tipoDoc: tiposDoc.find(t=>t.id===d.tipo_documento_id),
-        doc: d, nivel: getAlertColor(diasHasta(d.fecha_vto)),
-      }))
-      .filter(f => f.emp)
-      .sort((a,b) => a.doc.fecha_vto.localeCompare(b.doc.fecha_vto));
-  } else {
-    // Modo alerta (default): igual que antes, pero ahora también filtrable por tipo de documento.
-    empleadosFiltrados.forEach(emp => {
-      tiposDocFiltrados.forEach(t => {
-        const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
-        if (!doc) { filas.push({ emp, tipoDoc: t, doc: null, nivel: "sin_doc" }); return; }
-        if (!doc.fecha_vto) return;
-        const dias = diasHasta(doc.fecha_vto);
-        const color = getAlertColor(dias);
-        if (color === "vencido" || color === "critico" || color === "proximo") {
-          filas.push({ emp, tipoDoc: t, doc, nivel: color, dias: dias });
-        }
-      });
-      // Sin ningún documento cargado: solo aplica si no se filtró por un tipo de documento puntual.
-      if (!tipoDocumento) {
-        const docsEmp = documentos.filter(d=>d.empleado_id===emp.id);
-        if (docsEmp.length === 0) filas.push({ emp, tipoDoc: null, doc: null, nivel: "sin_doc" });
+  const filas = [];
+  empleadosFiltrados.forEach(emp => {
+    tiposDocFiltrados.forEach(t => {
+      const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
+      if (!doc) { filas.push({ emp, tipoDoc: t, doc: null, nivel: "sin_doc" }); return; }
+      if (!doc.fecha_vto) return;
+      const dias = diasHasta(doc.fecha_vto);
+      const color = getAlertColor(dias);
+      if (color === "vencido" || color === "critico" || color === "proximo") {
+        filas.push({ emp, tipoDoc: t, doc, nivel: color, dias: dias });
       }
     });
-    filas.sort((a,b)=>{const o={vencido:0,sin_doc:1,critico:2,proximo:3};return o[a.nivel]-o[b.nivel];});
-  }
+    // Sin ningún documento cargado: solo aplica si no se filtró por un tipo de documento puntual.
+    if (!tipoDocumento) {
+      const docsEmp = documentos.filter(d=>d.empleado_id===emp.id);
+      if (docsEmp.length === 0) filas.push({ emp, tipoDoc: null, doc: null, nivel: "sin_doc" });
+    }
+  });
+  filas.sort((a,b)=>{const o={vencido:0,sin_doc:1,critico:2,proximo:3};return o[a.nivel]-o[b.nivel];});
 
   const vencidos = filas.filter(f=>f.nivel==="vencido").length;
   const criticos = filas.filter(f=>f.nivel==="critico").length;
@@ -877,13 +857,9 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
           <option value="">Todos los puestos</option>
           {puestosDisponibles.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
-        <FG label="Vencimiento desde"><input type="date" value={desde} onChange={e=>setDesde(e.target.value)} style={{height:36}}/></FG>
-        <FG label="Vencimiento hasta"><input type="date" value={hasta} onChange={e=>setHasta(e.target.value)} style={{height:36}}/></FG>
-      </div>
-      <div className="filter-row">
         <select className="filter-select" value={tipoDocumento} onChange={e=>setTipoDocumento(e.target.value)}>
           <option value="">Todos los documentos</option>
-          {tiposConVto.map(t=><option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>)}
+          {tiposDoc.map(t=><option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>)}
         </select>
       </div>
 
@@ -896,10 +872,10 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
       </div>
 
       {filas.length === 0 ? (
-        <div className="card"><div className="empty-state">{hayRangoFecha ? "No hay documentos con vencimiento en ese período." : "Toda la documentación está al día."}</div></div>
+        <div className="card"><div className="empty-state">Toda la documentación está al día.</div></div>
       ) : (
         <div className="card flush">
-          <div className="card-title">{hayRangoFecha ? `${filas.length} documento${filas.length===1?"":"s"} con vencimiento entre ${fmtDate(desde)} y ${fmtDate(hasta)}` : `Alertas de documentación · ${filas.length}`}</div>
+          <div className="card-title">Alertas de documentación · {filas.length}</div>
           <div className="table-wrap">
             <table>
               <thead><tr><th style={{paddingLeft:24}}>Tripulante</th><th>Tipo</th><th>Puesto</th><th>Documento</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead>
@@ -1377,7 +1353,7 @@ function LoginScreen() {
 
 /* Título, bajada y grupo de cada pantalla. Un solo lugar que lo declara. */
 const SECCIONES = {
-  dashboard:  { grupo:"Control",  titulo:"Alerta de documentacion de Tripulantes", sub:"Documentos vencidos, por vencer y faltantes de la tripulación activa. Filtrable por tipo, puesto, documento y rango de vencimiento." },
+  dashboard:  { grupo:"Control",  titulo:"Alerta de documentacion de Tripulantes", sub:"Documentos vencidos, por vencer y faltantes de la tripulación activa. Filtrable por tipo, puesto y tipo de documento." },
   efectivos:  { grupo:"Personal", titulo:"Tripulantes efectivos",    sub:"Legajo documental de cada tripulante embarcado, con el avance de la checklist obligatoria." },
   relevos:    { grupo:"Personal", titulo:"Tripulantes relevos",      sub:"Personal de relevo con legajo abierto, disponible para embarque." },
   epp_talles: { grupo:"EPP",      titulo:"Registro de talles",        sub:"Talle declarado por tripulante y por tipo de EPP. Es la base de la proyección de compras." },
