@@ -393,6 +393,11 @@ function FG({ label, children, full }) {
   </div>;
 }
 
+// ─── PUESTOS (categoría) ───────────────────────────────────────────────────
+// Lista única de puestos: la usa el alta/edición de tripulante y los filtros
+// por puesto del Dashboard y los listados de Efectivos/Relevos.
+const CATEGORIAS = ["Capitán Ultramar","Capitán Fluvial","Of. Fluvial","Piloto de Ultr. 1ra","Jefe Conductor","I Conductor","I Maquinista","Aux. de Máquinas","Contramaestre","I Cabo Engrasador","Marinero","Cocinero"];
+
 // ─── MODAL EMPLEADO ────────────────────────────────────────────────────────
 // Separa "apellido_nombre" existente en apellido / nombre (heurística: primera palabra = apellido).
 // Solo se usa para precargar el formulario al editar; el dato guardado sigue siendo un único campo.
@@ -443,7 +448,7 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
             <FG label="Categoría">
               <select value={form.categoria||""} onChange={e=>set("categoria",e.target.value)}>
                 <option value="">Seleccionar...</option>
-                {["Capitán Ultramar","Capitán Fluvial","Of. Fluvial","Piloto de Ultr. 1ra","Jefe Conductor","I Conductor","I Maquinista","Aux. de Máquinas","Contramaestre","I Cabo Engrasador","Marinero","Cocinero"].map(c=><option key={c} value={c}>{c}</option>)}
+                {CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </FG>
             <FG label="Tipo">
@@ -797,34 +802,21 @@ function ModalEntregaEPP({ empleado, eppTipos, talles, onClose, onSave, notify }
 }
 
 // ─── PAGE: DASHBOARD ───────────────────────────────────────────────────────
-function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
-  const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
-  const alertas = [];
-  empleados.filter(e=>e.activo).forEach(emp => {
-    tiposConVto.forEach(t => {
-      const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
-      if (!doc) { alertas.push({ emp, tipo: t, doc: null, nivel: "sin_doc" }); return; }
-      if (!doc.fecha_vto) return;
-      const dias = diasHasta(doc.fecha_vto);
-      const color = getAlertColor(dias);
-      if (color === "vencido" || color === "critico" || color === "proximo") {
-        alertas.push({ emp, tipo: t, doc, nivel: color, dias });
-      }
-    });
-    // También alertar si no tiene ningún documento
-    const docsEmp = documentos.filter(d=>d.empleado_id===emp.id);
-    if (docsEmp.length === 0) alertas.push({ emp, tipo: null, doc: null, nivel: "sin_doc" });
-  });
-
+// Un bloque de alertas (KPIs + tabla) para un grupo de tripulantes (efectivos o relevos).
+function BloqueAlertas({ titulo, empleadosGrupo, alertas, onVerEmpleado }) {
   const vencidos = alertas.filter(a=>a.nivel==="vencido").length;
   const criticos = alertas.filter(a=>a.nivel==="critico").length;
   const proximos = alertas.filter(a=>a.nivel==="proximo").length;
   const sinDoc   = alertas.filter(a=>a.nivel==="sin_doc").length;
 
   return (
-    <div>
+    <div style={{marginBottom:32}}>
+      <div className="flex-between" style={{marginBottom:12}}>
+        <div style={{font:"600 16px/1.3 var(--sans)",color:"var(--navy)"}}>{titulo}</div>
+        <span className="text-mono" style={{fontSize:11,color:"var(--muted)",letterSpacing:".06em",textTransform:"uppercase"}}>{empleadosGrupo.length} activos</span>
+      </div>
       <div className="stats stats-5">
-        <div className="stat"><div className="stat-label">Tripulantes activos</div><div className="stat-value va">{empleados.filter(e=>e.activo).length}</div></div>
+        <div className="stat"><div className="stat-label">Tripulantes activos</div><div className="stat-value va">{empleadosGrupo.length}</div></div>
         <div className="stat"><div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div></div>
         <div className="stat"><div className="stat-label">Críticos · menos de 30 d</div><div className="stat-value vc">{criticos}</div></div>
         <div className="stat"><div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div></div>
@@ -838,7 +830,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
           <div className="card-title">Alertas de documentación · {alertas.length}</div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th style={{paddingLeft:24}}>Tripulante</th><th>Categoría</th><th>Documento</th><th>Estado</th><th></th></tr></thead>
+              <thead><tr><th style={{paddingLeft:24}}>Tripulante</th><th>Puesto</th><th>Documento</th><th>Estado</th><th></th></tr></thead>
               <tbody>
                 {alertas.sort((a,b)=>{const o={vencido:0,sin_doc:1,critico:2,proximo:3};return o[a.nivel]-o[b.nivel];}).map((al,i)=>(
                   <tr key={i}>
@@ -867,16 +859,63 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
   );
 }
 
+function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
+  const [puesto, setPuesto] = useState("");
+  const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
+
+  const armarAlertas = (grupo) => {
+    const alertas = [];
+    grupo.forEach(emp => {
+      tiposConVto.forEach(t => {
+        const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
+        if (!doc) { alertas.push({ emp, tipo: t, doc: null, nivel: "sin_doc" }); return; }
+        if (!doc.fecha_vto) return;
+        const dias = diasHasta(doc.fecha_vto);
+        const color = getAlertColor(dias);
+        if (color === "vencido" || color === "critico" || color === "proximo") {
+          alertas.push({ emp, tipo: t, doc, nivel: color, dias });
+        }
+      });
+      // También alertar si no tiene ningún documento
+      const docsEmp = documentos.filter(d=>d.empleado_id===emp.id);
+      if (docsEmp.length === 0) alertas.push({ emp, tipo: null, doc: null, nivel: "sin_doc" });
+    });
+    return alertas;
+  };
+
+  const activos = empleados.filter(e=>e.activo&&(!puesto||e.categoria===puesto));
+  const efectivos = activos.filter(e=>e.tipo==="efectivo");
+  const relevos = activos.filter(e=>e.tipo==="relevo");
+  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo).map(e=>e.categoria).filter(Boolean))];
+
+  return (
+    <div>
+      <div className="filter-row">
+        <select className="filter-select" value={puesto} onChange={e=>setPuesto(e.target.value)}>
+          <option value="">Todos los puestos</option>
+          {puestosDisponibles.sort().map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <BloqueAlertas titulo="Efectivos" empleadosGrupo={efectivos} alertas={armarAlertas(efectivos)} onVerEmpleado={onVerEmpleado} />
+      <BloqueAlertas titulo="Relevos" empleadosGrupo={relevos} alertas={armarAlertas(relevos)} onVerEmpleado={onVerEmpleado} />
+    </div>
+  );
+}
+
 // ─── PAGE: EMPLEADOS (efectivos o relevos) ─────────────────────────────────
 function PageEmpleados({ tipo, empleados, documentos, tiposDoc, onReload, notify }) {
   const [filtro, setFiltro] = useState("");
+  const [puesto, setPuesto] = useState("");
   const [modalEmp, setModalEmp] = useState(null);
   const [detalle, setDetalle] = useState(null);
 
-  const lista = empleados.filter(e=>e.activo&&e.tipo===tipo&&(
-    !filtro || e.apellido_nombre.toLowerCase().includes(filtro.toLowerCase()) ||
-    (e.categoria||"").toLowerCase().includes(filtro.toLowerCase())
-  ));
+  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo&&e.tipo===tipo).map(e=>e.categoria).filter(Boolean))];
+
+  const lista = empleados.filter(e=>e.activo&&e.tipo===tipo&&
+    (!puesto || e.categoria===puesto) &&
+    (!filtro || e.apellido_nombre.toLowerCase().includes(filtro.toLowerCase()) ||
+    (e.categoria||"").toLowerCase().includes(filtro.toLowerCase()))
+  );
 
   const getPct = (emp) => {
     const docsEmp = documentos.filter(d=>d.empleado_id===emp.id);
@@ -894,7 +933,11 @@ function PageEmpleados({ tipo, empleados, documentos, tiposDoc, onReload, notify
   return (
     <div>
       <div className="filter-row">
-        <input className="filter-input" placeholder="Buscar por nombre o categoría" value={filtro} onChange={e=>setFiltro(e.target.value)}/>
+        <input className="filter-input" placeholder="Buscar por nombre" value={filtro} onChange={e=>setFiltro(e.target.value)}/>
+        <select className="filter-select" value={puesto} onChange={e=>setPuesto(e.target.value)}>
+          <option value="">Todos los puestos</option>
+          {puestosDisponibles.sort().map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
         <div className="filter-spacer" />
         <button className="btn btn-primary" onClick={()=>setModalEmp({tipo})}>
           <Ico d={ICONS.plus} size={15}/>Nuevo {tipo}
@@ -1203,6 +1246,77 @@ function PageProyeccionCompras({ empleados, eppTipos, talles }) {
   );
 }
 
+// ─── PAGE: VENCIMIENTOS POR PERÍODO ────────────────────────────────────────
+// Documentos cuyo vencimiento cae dentro de [desde, hasta], sin importar el
+// estado actual (incluye ya vencidos: sirve para planificar, no para auditar
+// qué estaba vigente en el pasado — eso requeriría guardar historial).
+function PageVencimientosPeriodo({ empleados, documentos, tiposDoc, onVerEmpleado }) {
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+  const [tipo, setTipo] = useState("");
+  const [puesto, setPuesto] = useState("");
+
+  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo).map(e=>e.categoria).filter(Boolean))];
+
+  const resultados = (!desde || !hasta) ? [] : documentos
+    .filter(d => d.fecha_vto && d.fecha_vto >= desde && d.fecha_vto <= hasta)
+    .map(d => ({ doc: d, emp: empleados.find(e=>e.id===d.empleado_id), tipoDoc: tiposDoc.find(t=>t.id===d.tipo_documento_id) }))
+    .filter(r => r.emp && r.emp.activo)
+    .filter(r => !tipo || r.emp.tipo===tipo)
+    .filter(r => !puesto || r.emp.categoria===puesto)
+    .sort((a,b) => a.doc.fecha_vto.localeCompare(b.doc.fecha_vto));
+
+  return (
+    <div>
+      <div className="filter-row">
+        <FG label="Desde"><input type="date" value={desde} onChange={e=>setDesde(e.target.value)} style={{height:36}}/></FG>
+        <FG label="Hasta"><input type="date" value={hasta} onChange={e=>setHasta(e.target.value)} style={{height:36}}/></FG>
+        <select className="filter-select" value={tipo} onChange={e=>setTipo(e.target.value)}>
+          <option value="">Efectivos y relevos</option>
+          <option value="efectivo">Solo efectivos</option>
+          <option value="relevo">Solo relevos</option>
+        </select>
+        <select className="filter-select" value={puesto} onChange={e=>setPuesto(e.target.value)}>
+          <option value="">Todos los puestos</option>
+          {puestosDisponibles.sort().map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      {(!desde || !hasta) ? (
+        <div className="card"><div className="empty-state">Seleccioná fecha desde y fecha hasta para ver los documentos que vencen en ese período.</div></div>
+      ) : resultados.length === 0 ? (
+        <div className="card"><div className="empty-state">No hay documentos con vencimiento en ese período.</div></div>
+      ) : (
+        <div className="card flush">
+          <div className="card-title">{resultados.length} documento{resultados.length===1?"":"s"} con vencimiento entre {fmtDate(desde)} y {fmtDate(hasta)}</div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th style={{paddingLeft:24}}>Tripulante</th><th>Puesto</th><th>Tipo</th><th>Documento</th><th>Vencimiento</th><th>Estado actual</th><th></th></tr></thead>
+              <tbody>
+                {resultados.map((r,i)=>(
+                  <tr key={i}>
+                    <td style={{fontWeight:500,paddingLeft:24}}>{r.emp.apellido_nombre}</td>
+                    <td className="text-muted">{r.emp.categoria}</td>
+                    <td><span className={`badge ${r.emp.tipo==="efectivo"?"b-blue":"b-gray"}`}>{r.emp.tipo}</span></td>
+                    <td>{r.tipoDoc?.nombre || "—"}</td>
+                    <td className="text-mono">{fmtDate(r.doc.fecha_vto)}</td>
+                    <td><DiasChip fechaStr={r.doc.fecha_vto}/></td>
+                    <td style={{paddingRight:24}}>
+                      <div className="row-actions">
+                        <button className="btn btn-sm btn-ghost" onClick={()=>onVerEmpleado(r.emp)}>Ver legajo</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── LOGIN (estética INTEGRA / PL Offshore, igual al módulo Reparaciones) ──
 function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -1301,7 +1415,8 @@ function LoginScreen() {
 
 /* Título, bajada y grupo de cada pantalla. Un solo lugar que lo declara. */
 const SECCIONES = {
-  dashboard:  { grupo:"Control",  titulo:"Alerta de documentacion de Tripulantes", sub:"Documentos vencidos, por vencer y faltantes de la tripulación activa. El orden sigue la criticidad, no la fecha de carga." },
+  dashboard:  { grupo:"Control",  titulo:"Alerta de documentacion de Tripulantes", sub:"Documentos vencidos, por vencer y faltantes de la tripulación activa, separados en efectivos y relevos. El orden sigue la criticidad, no la fecha de carga." },
+  vencimientos: { grupo:"Control", titulo:"Vencimientos por período",  sub:"Documentos cuyo vencimiento cae dentro de un rango de fechas, sin importar el estado actual." },
   efectivos:  { grupo:"Personal", titulo:"Tripulantes efectivos",    sub:"Legajo documental de cada tripulante embarcado, con el avance de la checklist obligatoria." },
   relevos:    { grupo:"Personal", titulo:"Tripulantes relevos",      sub:"Personal de relevo con legajo abierto, disponible para embarque." },
   epp_talles: { grupo:"EPP",      titulo:"Registro de talles",        sub:"Talle declarado por tripulante y por tipo de EPP. Es la base de la proyección de compras." },
@@ -1364,6 +1479,7 @@ export default function App() {
   const NAV = [
     { titulo:"Control", items:[
       { id:"dashboard", icon:"gauge", label:"Alertas", count:vencidos, tone:"danger" },
+      { id:"vencimientos", icon:"file", label:"Vencimientos por período", count:0 },
     ]},
     { titulo:"Personal", items:[
       { id:"efectivos", icon:"user", label:"Efectivos", count:empleados.filter(e=>e.activo&&e.tipo==="efectivo").length },
@@ -1487,6 +1603,12 @@ export default function App() {
           <div className="content">
             {page==="dashboard" && (
               <PageDashboard
+                empleados={empleados} documentos={documentos} tiposDoc={tiposDoc}
+                onVerEmpleado={handleVerEmpleado}
+              />
+            )}
+            {page==="vencimientos" && (
+              <PageVencimientosPeriodo
                 empleados={empleados} documentos={documentos} tiposDoc={tiposDoc}
                 onVerEmpleado={handleVerEmpleado}
               />
