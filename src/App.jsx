@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import JSZip from "jszip";
 import { supabase } from "./lib/supabase";
 
 const PORTAL_URL = "https://integra.ploffshore.com";
@@ -97,6 +98,30 @@ const api = {
   },
   async updateEntrega(id, cambios) {
     const { error } = await supabase.from("epp_entregas").update(cambios).eq("id", id);
+    if (error) throw error;
+  },
+  async getProyectos() {
+    const { data, error } = await supabase.from("proyectos").select("*").order("fecha_inicio", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+  async upsertProyecto(p) {
+    const { data, error } = await supabase.from("proyectos").upsert([p]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async getAsignaciones() {
+    const { data, error } = await supabase.from("asignaciones").select("*");
+    if (error) throw error;
+    return data || [];
+  },
+  async insertAsignacion(a) {
+    const { data, error } = await supabase.from("asignaciones").insert([a]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async updateAsignacion(id, cambios) {
+    const { error } = await supabase.from("asignaciones").update(cambios).eq("id", id);
     if (error) throw error;
   },
 };
@@ -217,6 +242,7 @@ tr.falta td{background:#FDF6F5}
 .filter-select{cursor:pointer;min-width:150px}
 .filter-input:focus,.filter-select:focus{border-width:2px;border-color:var(--action);padding:0 9px}
 .filter-spacer{margin-left:auto}
+.proyecto-tag{display:flex;align-items:center;height:36px;padding:0 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);font-size:14px;color:var(--navy);font-weight:500;white-space:nowrap}
 
 /* ── BADGES ──────────────────────────────────────────────────────────────── */
 .badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
@@ -397,6 +423,10 @@ function FG({ label, children, full }) {
 // Lista única de puestos: la usa el alta/edición de tripulante y los filtros
 // por puesto del Dashboard y los listados de Efectivos/Relevos.
 const CATEGORIAS = ["Capitán Ultramar","Capitán Fluvial","Of. Fluvial","Piloto de Ultr. 1ra","Jefe Conductor","I Conductor","I Maquinista","Aux. de Máquinas","Contramaestre","I Cabo Engrasador","Marinero","Cocinero"];
+
+// ─── BUQUES ────────────────────────────────────────────────────────────────
+// Igual que CATEGORIAS: lista fija en código, no tabla aparte, porque son solo dos.
+const BUQUES = ["Atlantic Dama", "Golondrina de Mar"];
 
 // ─── MODAL EMPLEADO ────────────────────────────────────────────────────────
 // Separa "apellido_nombre" existente en apellido / nombre (heurística: primera palabra = apellido).
@@ -1254,6 +1284,422 @@ function PageProyeccionCompras({ empleados, eppTipos, talles }) {
   );
 }
 
+// ─── MODAL ASIGNAR TRIPULANTE A PROYECTO ───────────────────────────────────
+function ModalAsignar({ proyecto, empleadosDisponibles, onClose, onSave, notify }) {
+  const [empleadoId, setEmpleadoId] = useState("");
+  const [fechaDesde, setFechaDesde] = useState(fechaHoy());
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!empleadoId) { notify("Elegí un tripulante"); return; }
+    setSaving(true);
+    try {
+      await api.insertAsignacion({ empleado_id: empleadoId, proyecto_id: proyecto.id, fecha_desde: fechaDesde });
+      onSave(); onClose();
+    } catch(e) { notify("Error: "+e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="overlay">
+      <div className="modal">
+        <div className="mhdr">
+          <div>
+            <div className="mtitle">Embarcar tripulante</div>
+            <div className="msub">{proyecto.nombre} · {proyecto.buque}</div>
+          </div>
+          <button className="mclose" onClick={onClose}>✕</button>
+        </div>
+        <div className="mbody">
+          <div className="form-single">
+            <FG label="Tripulante *">
+              <select value={empleadoId} onChange={e=>setEmpleadoId(e.target.value)}>
+                <option value="">Seleccionar...</option>
+                {empleadosDisponibles.map(e=><option key={e.id} value={e.id}>{e.apellido_nombre} — {e.categoria} ({e.tipo})</option>)}
+              </select>
+            </FG>
+            <FG label="Fecha de embarque"><input type="date" value={fechaDesde} onChange={e=>setFechaDesde(e.target.value)}/></FG>
+          </div>
+        </div>
+        <div className="mftr">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"Embarcar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL NUEVO PROYECTO (rota el proyecto activo de un buque) ────────────
+function ModalNuevoProyecto({ buque, proyectoAnterior, onClose, onSave, notify }) {
+  const [nombre, setNombre] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!nombre.trim()) { notify("Ingresá el nombre del proyecto"); return; }
+    setSaving(true);
+    try {
+      if (proyectoAnterior) {
+        await api.upsertProyecto({ ...proyectoAnterior, activo: false, fecha_fin: fechaHoy() });
+      }
+      await api.upsertProyecto({ nombre: nombre.trim(), buque, fecha_inicio: fechaHoy(), activo: true });
+      onSave(); onClose();
+    } catch(e) { notify("Error: "+e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="overlay">
+      <div className="modal">
+        <div className="mhdr">
+          <div className="mtitle">Nuevo proyecto — {buque}</div>
+          <button className="mclose" onClick={onClose}>✕</button>
+        </div>
+        <div className="mbody">
+          {proyectoAnterior && (
+            <div className="info-box warn" style={{marginBottom:16}}>
+              Esto cierra el proyecto actual ({proyectoAnterior.nombre}, desde {fmtDate(proyectoAnterior.fecha_inicio)}) con fecha de hoy.
+              El rol actual no pasa automáticamente al proyecto nuevo — hay que volver a embarcar a cada tripulante.
+            </div>
+          )}
+          <FG label="Nombre del proyecto *"><input value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: Arendal"/></FG>
+        </div>
+        <div className="mftr">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"Crear proyecto"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PAGE: ROL POR BUQUE ────────────────────────────────────────────────────
+function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones, onReload, notify, onVerEmpleado }) {
+  const [buque, setBuque] = useState(BUQUES[0]);
+  const [fecha, setFecha] = useState(fechaHoy());
+  const [tipoDocumento, setTipoDocumento] = useState("");
+  const [modalAsignar, setModalAsignar] = useState(false);
+  const [modalProyecto, setModalProyecto] = useState(false);
+
+  const proyectoActivo = proyectos.find(p=>p.buque===buque && p.activo);
+  const fechaEsHoy = fecha === fechaHoy();
+
+  const rol = !proyectoActivo ? [] : asignaciones
+    .filter(a => a.proyecto_id===proyectoActivo.id && a.fecha_desde<=fecha && (!a.fecha_hasta || a.fecha_hasta>=fecha))
+    .map(a => ({ asign: a, emp: empleados.find(e=>e.id===a.empleado_id) }))
+    .filter(r => r.emp);
+
+  const enRolIds = new Set(!proyectoActivo ? [] : asignaciones.filter(a=>a.proyecto_id===proyectoActivo.id && !a.fecha_hasta).map(a=>a.empleado_id));
+  const empleadosDisponibles = empleados.filter(e=>e.activo && !enRolIds.has(e.id));
+
+  const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
+  const tiposDocFiltrados = tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento) : tiposConVto;
+
+  let vencidos=0, criticos=0, proximos=0, sinDoc=0;
+  rol.forEach(({emp}) => {
+    tiposDocFiltrados.forEach(t => {
+      const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
+      if (!doc) { sinDoc++; return; }
+      if (!doc.fecha_vto) return;
+      const color = getAlertColor(diasHasta(doc.fecha_vto));
+      if (color==="vencido") vencidos++;
+      else if (color==="critico") criticos++;
+      else if (color==="proximo") proximos++;
+    });
+  });
+
+  const handleDesembarcar = async (asign, nombre) => {
+    if (!confirm(`¿Marcar a ${nombre} como desembarcado hoy?`)) return;
+    try { await api.updateAsignacion(asign.id, { fecha_hasta: fechaHoy() }); onReload(); notify("Tripulante desembarcado"); }
+    catch(e) { notify("Error: "+e.message); }
+  };
+
+  return (
+    <div>
+      <div className="filter-row">
+        <select className="filter-select" value={buque} onChange={e=>setBuque(e.target.value)}>
+          {BUQUES.map(b=><option key={b} value={b}>{b}</option>)}
+        </select>
+        {proyectoActivo ? (
+          <div className="proyecto-tag">Proyecto: {proyectoActivo.nombre}</div>
+        ) : (
+          <div className="info-box warn" style={{padding:"7px 12px",fontSize:13}}>Este buque no tiene proyecto activo.</div>
+        )}
+        <select className="filter-select" value={tipoDocumento} onChange={e=>setTipoDocumento(e.target.value)}>
+          <option value="">Todos los documentos</option>
+          {tiposDoc.map(t=><option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>)}
+        </select>
+        <FG label="Ver rol a la fecha"><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{height:36}}/></FG>
+        <div className="filter-spacer" />
+        <button className="btn btn-ghost" onClick={()=>setModalProyecto(true)}>{proyectoActivo?"Nuevo proyecto":"Crear proyecto"}</button>
+        {proyectoActivo && fechaEsHoy && (
+          <button className="btn btn-primary" onClick={()=>setModalAsignar(true)}><Ico d={ICONS.plus} size={15}/>Embarcar tripulante</button>
+        )}
+      </div>
+
+      {proyectoActivo && (
+        <>
+          <div className="stats stats-5">
+            <div className="stat"><div className="stat-label">A bordo</div><div className="stat-value va">{rol.length}</div></div>
+            <div className="stat"><div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div></div>
+            <div className="stat"><div className="stat-label">Críticos · menos de 30 d</div><div className="stat-value vc">{criticos}</div></div>
+            <div className="stat"><div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div></div>
+            <div className="stat"><div className="stat-label">Sin documentar</div><div className="stat-value vr">{sinDoc}</div></div>
+          </div>
+
+          {rol.length === 0 ? (
+            <div className="card"><div className="empty-state">No hay tripulantes a bordo en esa fecha.</div></div>
+          ) : (
+            <div className="card flush">
+              <div className="card-title">{rol.length} tripulante{rol.length===1?"":"s"} a bordo{fechaEsHoy?" · hoy":` · al ${fmtDate(fecha)}`}</div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    {tipoDocumento
+                      ? <tr><th style={{paddingLeft:24}}>Tripulante</th><th>Puesto</th><th>A bordo desde</th><th>Vencimiento</th><th>Estado</th><th></th></tr>
+                      : <tr><th style={{paddingLeft:24}}>Tripulante</th><th>Puesto</th><th>A bordo desde</th><th>Documentación</th><th></th></tr>}
+                  </thead>
+                  <tbody>
+                    {rol.map(({asign, emp}) => {
+                      const bajo = asign.fecha_hasta && !fechaEsHoy;
+                      if (tipoDocumento) {
+                        const t = tiposDoc.find(x=>x.id===tipoDocumento);
+                        const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===tipoDocumento);
+                        return (
+                          <tr key={asign.id}>
+                            <td style={{fontWeight:500,paddingLeft:24}}>{emp.apellido_nombre}{bajo && <span className="text-muted" style={{fontSize:11}}> (bajó {fmtDate(asign.fecha_hasta)})</span>}</td>
+                            <td className="text-muted">{emp.categoria}</td>
+                            <td className="text-mono">{fmtDate(asign.fecha_desde)}</td>
+                            <td className="text-mono">{doc?.fecha_vto ? fmtDate(doc.fecha_vto) : "—"}</td>
+                            <td>{doc ? (doc.fecha_vto ? <DiasChip fechaStr={doc.fecha_vto}/> : <span className="badge b-green">Vigente</span>) : <span className="badge b-red">Sin cargar</span>}</td>
+                            <td style={{paddingRight:24}}>
+                              <div className="row-actions">
+                                <button className="btn btn-sm btn-ghost" onClick={()=>onVerEmpleado(emp)}>Ver legajo</button>
+                                {!asign.fecha_hasta && <button className="btn btn-sm btn-danger" onClick={()=>handleDesembarcar(asign, emp.apellido_nombre)}>Desembarcar</button>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      const total = tiposConVto.length;
+                      const ok = tiposConVto.filter(t=>{
+                        const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
+                        return doc && getAlertColor(diasHasta(doc.fecha_vto))!=="vencido";
+                      }).length;
+                      const pct = total>0?Math.round(ok/total*100):0;
+                      const color = pct===100?"var(--accent2)":pct>=70?"var(--warn)":"var(--danger)";
+                      return (
+                        <tr key={asign.id}>
+                          <td style={{fontWeight:500,paddingLeft:24}}>{emp.apellido_nombre}{bajo && <span className="text-muted" style={{fontSize:11}}> (bajó {fmtDate(asign.fecha_hasta)})</span>}</td>
+                          <td className="text-muted">{emp.categoria}</td>
+                          <td className="text-mono">{fmtDate(asign.fecha_desde)}</td>
+                          <td>
+                            <div className="flex-gap">
+                              <div className="kbar-track"><div className="kbar-fill" style={{width:`${pct}%`,background:color}}/></div>
+                              <span className="text-mono" style={{fontSize:12,color}}>{ok}/{total}</span>
+                            </div>
+                          </td>
+                          <td style={{paddingRight:24}}>
+                            <div className="row-actions">
+                              <button className="btn btn-sm btn-ghost" onClick={()=>onVerEmpleado(emp)}>Ver legajo</button>
+                              {!asign.fecha_hasta && <button className="btn btn-sm btn-danger" onClick={()=>handleDesembarcar(asign, emp.apellido_nombre)}>Desembarcar</button>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {modalAsignar && proyectoActivo && (
+        <ModalAsignar
+          proyecto={proyectoActivo}
+          empleadosDisponibles={empleadosDisponibles}
+          onClose={()=>setModalAsignar(false)}
+          onSave={()=>{ onReload(); notify("Tripulante embarcado"); }}
+          notify={notify}
+        />
+      )}
+      {modalProyecto && (
+        <ModalNuevoProyecto
+          buque={buque}
+          proyectoAnterior={proyectoActivo}
+          onClose={()=>setModalProyecto(false)}
+          onSave={()=>{ onReload(); notify("Proyecto creado"); }}
+          notify={notify}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── PAGE: PRESENTAR DOCUMENTACIÓN ──────────────────────────────────────────
+// Junta documentos de un grupo de tripulantes (por buque/proyecto, o por
+// tipo/puesto sin importar buque) para entregar a una autoridad: matriz
+// tripulante × documento con su vencimiento, y descarga en ZIP de los
+// archivos disponibles. Si hay vencidos o faltantes, avisa antes de bajar
+// y deja elegir si igual se descarga lo que sí está.
+function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos, asignaciones, notify }) {
+  const [buque, setBuque] = useState("");
+  const [tipoPersona, setTipoPersona] = useState("");
+  const [puesto, setPuesto] = useState("");
+  const [docsSel, setDocsSel] = useState([]);
+  const [zipping, setZipping] = useState(false);
+
+  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo).map(e=>e.categoria).filter(Boolean))].sort();
+  const proyectoActivo = buque ? proyectos.find(p=>p.buque===buque && p.activo) : null;
+
+  let base = empleados.filter(e=>e.activo &&
+    (!tipoPersona || e.tipo===tipoPersona) &&
+    (!puesto || e.categoria===puesto)
+  );
+  if (buque) {
+    if (!proyectoActivo) base = [];
+    else {
+      const idsRol = new Set(asignaciones.filter(a=>a.proyecto_id===proyectoActivo.id && !a.fecha_hasta).map(a=>a.empleado_id));
+      base = base.filter(e=>idsRol.has(e.id));
+    }
+  }
+
+  const toggleDoc = (id) => setDocsSel(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
+
+  const filas = base.map(emp => ({
+    emp,
+    celdas: docsSel.map(docId => ({
+      tipoDoc: tiposDoc.find(t=>t.id===docId),
+      doc: documentos.find(d=>d.empleado_id===emp.id && d.tipo_documento_id===docId),
+    })),
+  }));
+
+  let problemas = 0;
+  filas.forEach(f => f.celdas.forEach(c => {
+    if (!c.doc || !c.doc.archivo_url) problemas++;
+    else if (c.doc.fecha_vto && getAlertColor(diasHasta(c.doc.fecha_vto))==="vencido") problemas++;
+  }));
+
+  const handleDescargarZip = async () => {
+    const items = [];
+    filas.forEach(f => f.celdas.forEach(c => {
+      if (c.doc && c.doc.archivo_url) items.push({ nombre: f.emp.apellido_nombre, doc: c.tipoDoc.nombre, url: c.doc.archivo_url });
+    }));
+    if (items.length === 0) { notify("No hay archivos cargados para descargar"); return; }
+    if (problemas > 0) {
+      const seguir = confirm(`Hay ${problemas} documento${problemas===1?"":"s"} vencido${problemas===1?"":"s"} o sin cargar entre los seleccionados. ¿Descargar igual solo lo que está disponible?`);
+      if (!seguir) return;
+    }
+    setZipping(true);
+    try {
+      const zip = new JSZip();
+      let fallas = 0;
+      for (const it of items) {
+        try {
+          const res = await fetch(it.url);
+          if (!res.ok) throw new Error("no se pudo bajar");
+          const blob = await res.blob();
+          const ext = (it.url.split(".").pop() || "pdf").split("?")[0];
+          zip.file(`${it.nombre} - ${it.doc}.${ext}`, blob);
+        } catch(e) { fallas++; }
+      }
+      const contenido = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(contenido);
+      const a = document.createElement("a");
+      a.href = url; a.download = "presentacion_documentacion.zip";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notify(fallas>0 ? `ZIP descargado (${fallas} archivo${fallas===1?"":"s"} no se pudo incluir)` : "ZIP descargado");
+    } catch(e) { notify("Error armando el ZIP: "+e.message); }
+    finally { setZipping(false); }
+  };
+
+  return (
+    <div>
+      <div className="filter-row">
+        <select className="filter-select" value={buque} onChange={e=>setBuque(e.target.value)}>
+          <option value="">Toda la empresa</option>
+          {BUQUES.map(b=><option key={b} value={b}>{b}</option>)}
+        </select>
+        <select className="filter-select" value={tipoPersona} onChange={e=>setTipoPersona(e.target.value)}>
+          <option value="">Efectivos y relevos</option>
+          <option value="efectivo">Solo efectivos</option>
+          <option value="relevo">Solo relevos</option>
+        </select>
+        <select className="filter-select" value={puesto} onChange={e=>setPuesto(e.target.value)}>
+          <option value="">Todos los puestos</option>
+          {puestosDisponibles.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      {buque && !proyectoActivo && (
+        <div className="info-box warn" style={{marginBottom:16}}>Este buque no tiene proyecto activo — no hay rol para acotar.</div>
+      )}
+
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-title">Documentos a presentar</div>
+        <div className="flex-gap">
+          {tiposDoc.map(t=>(
+            <label key={t.id} className="flex-gap" style={{gap:6,cursor:"pointer",border:"1px solid var(--border2)",borderRadius:4,padding:"6px 10px",background:docsSel.includes(t.id)?"var(--surface2)":"var(--surface)"}}>
+              <input type="checkbox" checked={docsSel.includes(t.id)} onChange={()=>toggleDoc(t.id)}/>
+              <span style={{fontSize:13}}>{t.codigo} — {t.nombre}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {docsSel.length === 0 ? (
+        <div className="card"><div className="empty-state">Elegí al menos un documento para armar la tabla.</div></div>
+      ) : base.length === 0 ? (
+        <div className="card"><div className="empty-state">No hay tripulantes que coincidan con estos filtros.</div></div>
+      ) : (
+        <>
+          {problemas > 0 && (
+            <div className="info-box warn" style={{marginBottom:16}}>
+              {problemas} documento{problemas===1?"":"s"} vencido{problemas===1?"":"s"} o sin cargar en esta selección — revisalo antes de presentar.
+            </div>
+          )}
+          <div className="card flush">
+            <div className="flex-between" style={{padding:"16px 24px 0"}}>
+              <div className="card-title" style={{marginBottom:0,padding:0,borderBottom:"none"}}>{filas.length} tripulante{filas.length===1?"":"s"}</div>
+              <button className="btn btn-primary btn-sm" onClick={handleDescargarZip} disabled={zipping}>
+                {zipping ? "Armando ZIP..." : <><Ico d={ICONS.upload} size={14}/>Descargar ZIP</>}
+              </button>
+            </div>
+            <div className="table-wrap" style={{marginTop:12}}>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{paddingLeft:24}}>Tripulante</th><th>Puesto</th>
+                    {docsSel.map(id=>{ const t=tiposDoc.find(x=>x.id===id); return <th key={id}>{t.nombre}</th>; })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filas.map(f=>(
+                    <tr key={f.emp.id}>
+                      <td style={{fontWeight:500,paddingLeft:24}}>{f.emp.apellido_nombre}</td>
+                      <td className="text-muted">{f.emp.categoria}</td>
+                      {f.celdas.map((c,i)=>(
+                        <td key={i}>
+                          {!c.doc || !c.doc.archivo_url ? <span className="badge b-red">Sin cargar</span>
+                            : c.doc.fecha_vto ? <DiasChip fechaStr={c.doc.fecha_vto}/>
+                            : <span className="badge b-green">Vigente</span>}
+                          {c.doc?.archivo_url && <div style={{marginTop:4}}><a className="link" href={c.doc.archivo_url} target="_blank" rel="noreferrer">Ver</a></div>}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ─── LOGIN (estética INTEGRA / PL Offshore, igual al módulo Reparaciones) ──
 function LoginScreen() {
@@ -1359,6 +1805,8 @@ const SECCIONES = {
   epp_talles: { grupo:"EPP",      titulo:"Registro de talles",        sub:"Talle declarado por tripulante y por tipo de EPP. Es la base de la proyección de compras." },
   entregas:   { grupo:"EPP",      titulo:"Entregas de EPP",           sub:"Constancias de entrega, estado de firma y respaldo escaneado de cada acta." },
   proyeccion: { grupo:"EPP",      titulo:"Proyección de compras",     sub:"Distribución de talles registrados para dimensionar el stock mínimo por tipo de EPP." },
+  rol_buque:  { grupo:"Embarque", titulo:"Rol por buque",             sub:"Tripulantes a bordo de cada buque/proyecto, hoy o a una fecha pasada, con su documentación." },
+  presentar:  { grupo:"Embarque", titulo:"Presentar documentación",   sub:"Matriz de documentos por tripulante para entregar a una autoridad, con descarga en ZIP." },
 };
 
 // ─── APP PRINCIPAL ─────────────────────────────────────────────────────────
@@ -1372,6 +1820,8 @@ export default function App() {
   const [tiposDoc, setTiposDoc] = useState([]);
   const [eppTipos, setEppTipos] = useState([]);
   const [talles, setTalles] = useState([]);
+  const [proyectos, setProyectos] = useState([]);
+  const [asignaciones, setAsignaciones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notif, setNotif] = useState(null);
   const [detalleExterno, setDetalleExterno] = useState(null);
@@ -1397,12 +1847,12 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [emps, docs, tipos, eppT, tall] = await Promise.all([
+      const [emps, docs, tipos, eppT, tall, proys, asigs] = await Promise.all([
         api.getEmpleados(), api.getDocumentos(), api.getTiposDoc(),
-        api.getEppTipos(), api.getTalles(),
+        api.getEppTipos(), api.getTalles(), api.getProyectos(), api.getAsignaciones(),
       ]);
       setEmpleados(emps); setDocumentos(docs); setTiposDoc(tipos);
-      setEppTipos(eppT); setTalles(tall);
+      setEppTipos(eppT); setTalles(tall); setProyectos(proys); setAsignaciones(asigs);
     } catch(e) { notify("Error cargando datos: "+e.message); }
     finally { setLoading(false); }
   }, [notify]);
@@ -1425,6 +1875,10 @@ export default function App() {
       { id:"epp_talles", icon:"vest",  label:"Registro de talles",   count:0 },
       { id:"entregas",   icon:"box",   label:"Entregas de EPP",      count:0 },
       { id:"proyeccion", icon:"chart", label:"Proyección de compras", count:0 },
+    ]},
+    { titulo:"Embarque", items:[
+      { id:"rol_buque", icon:"swap", label:"Rol por buque",           count:0 },
+      { id:"presentar", icon:"file", label:"Presentar documentación", count:0 },
     ]},
   ];
 
@@ -1565,6 +2019,19 @@ export default function App() {
             )}
             {page==="proyeccion" && (
               <PageProyeccionCompras empleados={empleados} eppTipos={eppTipos} talles={talles}/>
+            )}
+            {page==="rol_buque" && (
+              <PageRolBuque
+                empleados={empleados} documentos={documentos} tiposDoc={tiposDoc}
+                proyectos={proyectos} asignaciones={asignaciones}
+                onReload={loadAll} notify={notify} onVerEmpleado={handleVerEmpleado}
+              />
+            )}
+            {page==="presentar" && (
+              <PagePresentarDocumentacion
+                empleados={empleados} documentos={documentos} tiposDoc={tiposDoc}
+                proyectos={proyectos} asignaciones={asignaciones} notify={notify}
+              />
             )}
           </div>
         </div>
