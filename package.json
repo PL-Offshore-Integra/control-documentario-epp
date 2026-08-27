@@ -9,11 +9,12 @@
     "lint": "eslint .",
     "preview": "vite preview"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.106.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
-  },
+     "dependencies": {
+     "@supabase/supabase-js": "^2.x.x",
+     "react": "^18.x.x",
+     "react-dom": "^18.x.x",
+     "jszip": "^3.10.1"
+   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/react": "^19.2.14",
