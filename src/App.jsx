@@ -101,12 +101,12 @@ const api = {
     if (error) throw error;
   },
   async getProyectos() {
-    const { data, error } = await supabase.from("proyectos").select("*").order("fecha_inicio", { ascending: false });
+    const { data, error } = await supabase.from("proyectos_buque").select("*").order("fecha_inicio", { ascending: false });
     if (error) throw error;
     return data || [];
   },
   async upsertProyecto(p) {
-    const { data, error } = await supabase.from("proyectos").upsert([p]).select().single();
+    const { data, error } = await supabase.from("proyectos_buque").upsert([p]).select().single();
     if (error) throw error;
     return data;
   },
@@ -2070,3 +2070,4 @@ export default function App() {
     </>
   );
 }
+
