@@ -1330,6 +1330,45 @@ function ModalAsignar({ proyecto, empleadosDisponibles, onClose, onSave, notify 
   );
 }
 
+// ─── MODAL EDITAR FECHA DE EMBARQUE ─────────────────────────────────────────
+function ModalEditarFecha({ asign, nombre, onClose, onSave, notify }) {
+  const [fechaDesde, setFechaDesde] = useState(asign.fecha_desde);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!fechaDesde) { notify("Elegí una fecha"); return; }
+    setSaving(true);
+    try {
+      await api.updateAsignacion(asign.id, { fecha_desde: fechaDesde });
+      onSave(); onClose();
+    } catch(e) { notify("Error: "+e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="overlay">
+      <div className="modal">
+        <div className="mhdr">
+          <div>
+            <div className="mtitle">Editar fecha de embarque</div>
+            <div className="msub">{nombre}</div>
+          </div>
+          <button className="mclose" onClick={onClose}>✕</button>
+        </div>
+        <div className="mbody">
+          <div className="form-single">
+            <FG label="Fecha de embarque *"><input type="date" value={fechaDesde} onChange={e=>setFechaDesde(e.target.value)}/></FG>
+          </div>
+        </div>
+        <div className="mftr">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"Guardar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── MODAL NUEVO PROYECTO (rota el proyecto activo de un buque) ────────────
 function ModalNuevoProyecto({ buque, proyectoAnterior, onClose, onSave, notify }) {
   const [nombre, setNombre] = useState("");
@@ -1380,12 +1419,13 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const [tipoDocumento, setTipoDocumento] = useState("");
   const [modalAsignar, setModalAsignar] = useState(false);
   const [modalProyecto, setModalProyecto] = useState(false);
+  const [editarFecha, setEditarFecha] = useState(null);
 
   const proyectoActivo = proyectos.find(p=>p.buque===buque && p.activo);
   const fechaEsHoy = fecha === fechaHoy();
 
   const rol = !proyectoActivo ? [] : asignaciones
-    .filter(a => a.proyecto_id===proyectoActivo.id && a.fecha_desde<=fecha && (!a.fecha_hasta || a.fecha_hasta>=fecha))
+    .filter(a => a.proyecto_id===proyectoActivo.id && a.fecha_desde<=fecha && (!a.fecha_hasta || a.fecha_hasta>fecha))
     .map(a => ({ asign: a, emp: empleados.find(e=>e.id===a.empleado_id) }))
     .filter(r => r.emp);
 
@@ -1475,6 +1515,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                             <td style={{paddingRight:24}}>
                               <div className="row-actions">
                                 <button className="btn btn-sm btn-ghost" onClick={()=>onVerEmpleado(emp)}>Ver legajo</button>
+                                {!asign.fecha_hasta && <button className="btn btn-sm btn-ghost" onClick={()=>setEditarFecha({asign, nombre:emp.apellido_nombre})}>Editar fecha</button>}
                                 {!asign.fecha_hasta && <button className="btn btn-sm btn-danger" onClick={()=>handleDesembarcar(asign, emp.apellido_nombre)}>Desembarcar</button>}
                               </div>
                             </td>
@@ -1522,6 +1563,15 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
           empleadosDisponibles={empleadosDisponibles}
           onClose={()=>setModalAsignar(false)}
           onSave={()=>{ onReload(); notify("Tripulante embarcado"); }}
+          notify={notify}
+        />
+      )}
+      {editarFecha && (
+        <ModalEditarFecha
+          asign={editarFecha.asign}
+          nombre={editarFecha.nombre}
+          onClose={()=>setEditarFecha(null)}
+          onSave={()=>{ onReload(); notify("Fecha actualizada"); }}
           notify={notify}
         />
       )}
@@ -2070,4 +2120,3 @@ export default function App() {
     </>
   );
 }
-
