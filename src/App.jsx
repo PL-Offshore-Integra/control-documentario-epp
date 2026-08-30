@@ -19,6 +19,19 @@ function getAlertColor(dias) {
   return "ok";
 }
 function fechaHoy() { return new Date().toISOString().slice(0,10); }
+// Única fuente de verdad para el estado de un documento: si el tipo tiene
+// vencimiento, el estado sale SIEMPRE de la fecha (se recalcula solo, nadie
+// lo carga a mano). Si el tipo no tiene vencimiento, no hay fecha de la cual
+// derivarlo, así que el único dato real es si está cargado o no ("no_aplica"
+// para casos que no corresponden a este tripulante).
+function estadoEfectivo(doc, tipo) {
+  if (!doc) return "sin_cargar";
+  if (tipo?.tiene_vencimiento) {
+    if (!doc.fecha_vto) return "sin_fecha";
+    return getAlertColor(diasHasta(doc.fecha_vto)); // vencido | critico | proximo | ok
+  }
+  return doc.estado === "no_aplica" ? "no_aplica" : "vigente";
+}
 
 // ─── API ───────────────────────────────────────────────────────────────────
 const api = {
@@ -515,7 +528,7 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
         const path = `${empleadoId}/${form.tipo_documento_id}/${Date.now()}.${ext}`;
         url = await api.subirArchivo(file, "documentos", path);
       }
-      const saved = await api.upsertDocumento({ ...form, archivo_url: url });
+      const saved = await api.upsertDocumento({ ...form, archivo_url: url, fecha_vto: form.fecha_vto || null });
       onSave(saved); onClose();
     } catch(e) { notify("Error: " + e.message); }
     finally { setSaving(false); }
@@ -538,17 +551,16 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
                 {tiposDoc.map(t=><option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>)}
               </select>
             </FG>
-            {tipoSel?.tiene_vencimiento && (
+            {tipoSel?.tiene_vencimiento ? (
               <FG label="Fecha de vencimiento"><input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/></FG>
+            ) : (
+              <FG label="Estado">
+                <select value={form.estado||"vigente"} onChange={e=>set("estado",e.target.value)}>
+                  <option value="vigente">Vigente (documento cargado)</option>
+                  <option value="no_aplica">No aplica a este tripulante</option>
+                </select>
+              </FG>
             )}
-            <FG label="Estado">
-              <select value={form.estado||"vigente"} onChange={e=>set("estado",e.target.value)}>
-                <option value="vigente">Vigente</option>
-                <option value="a_vencer">A vencer</option>
-                <option value="vencido">Vencido</option>
-                <option value="no_aplica">No aplica</option>
-              </select>
-            </FG>
             <FG label="Adjuntar archivo (PDF, imagen)">
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e=>setFile(e.target.files[0])}/>
               {form.archivo_url && !file && (
@@ -585,7 +597,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
   });
 
   const total = checklist.length;
-  const ok = checklist.filter(c => c.doc && c.doc.estado !== "vencido").length;
+  const ok = checklist.filter(c => !["vencido","sin_cargar","sin_fecha"].includes(estadoEfectivo(c.doc, c.tipo))).length;
 
   return (
     <div className="overlay">
@@ -619,11 +631,16 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
                     <td style={{fontWeight:500}}>{tipo.nombre}</td>
                     <td>{doc?.fecha_vto ? <DiasChip fechaStr={doc.fecha_vto}/> : <span className="badge b-gray">—</span>}</td>
                     <td>
-                      {!doc ? <span className="badge b-red">Sin cargar</span> :
-                        doc.estado === "vigente" ? <span className="badge b-green">Vigente</span> :
-                        doc.estado === "a_vencer" ? <span className="badge b-amber">A vencer</span> :
-                        doc.estado === "vencido" ? <span className="badge b-red">Vencido</span> :
-                        <span className="badge b-gray">No aplica</span>}
+                      {(() => { const est = estadoEfectivo(doc, tipo); return (
+                        est === "sin_cargar" ? <span className="badge b-red">Sin cargar</span> :
+                        est === "sin_fecha" ? <span className="badge b-amber">Sin fecha cargada</span> :
+                        est === "vencido" ? <span className="badge b-red">Vencido</span> :
+                        est === "critico" ? <span className="badge b-crit">Crítico</span> :
+                        est === "proximo" ? <span className="badge b-amber">A vencer</span> :
+                        est === "ok" ? <span className="badge b-green">Vigente</span> :
+                        est === "no_aplica" ? <span className="badge b-gray">No aplica</span> :
+                        <span className="badge b-green">Vigente</span>
+                      ); })()}
                     </td>
                     <td>
                       {doc?.archivo_url
@@ -958,7 +975,10 @@ function PageEmpleados({ tipo, empleados, documentos, tiposDoc, onReload, notify
   const getPct = (emp) => {
     const docsEmp = documentos.filter(d=>d.empleado_id===emp.id);
     const total = tiposDoc.length;
-    const ok = docsEmp.filter(d=>d.estado!=="vencido").length;
+    const ok = docsEmp.filter(d => {
+      const t = tiposDoc.find(x=>x.id===d.tipo_documento_id);
+      return !["vencido","sin_fecha"].includes(estadoEfectivo(d, t));
+    }).length;
     return { ok, total, pct: total>0?Math.round(ok/total*100):0 };
   };
 
