@@ -1021,8 +1021,11 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
 
   const filas = [];
   empleadosFiltrados.forEach(emp => {
-    // Búsqueda por título específico (ej. "Capitán Fluvial"): no importa si lo
-    // tiene cargado en el slot de Título 1 o Título 2 — busca en los dos.
+    // Búsqueda por título específico (ej. "Capitán Fluvial"): trae a quien lo
+    // tiene cargado como Título 1 o Título 2 (documento con vencimiento), Y
+    // también a quien tiene ese mismo nombre como Rol de embarque asignado
+    // (aunque no tenga el documento de título cargado) — para no perderse a
+    // nadie que en la práctica ejerce o podría ejercer ese puesto.
     if (tituloBuscado) {
       const docsTitulo = tiposDoc.filter(t=>/^Título \d/.test(t.nombre))
         .map(t => ({ t, doc: documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id) }))
@@ -1032,6 +1035,9 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
         const color = dias!=null ? getAlertColor(dias) : "ok";
         filas.push({ emp, tipoDoc: t, doc, nivel: color, dias });
       });
+      if (docsTitulo.length === 0 && catsOf(emp).includes(tituloBuscado)) {
+        filas.push({ emp, tipoDoc: null, doc: null, nivel: "rol_asignado" });
+      }
       return;
     }
     // Caso especial "Título (1 y 2)": solo interesa mostrar a quien tiene LOS DOS
@@ -1134,10 +1140,11 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
                     <td style={{fontWeight:500,paddingLeft:24}}>{f.emp.apellido_nombre}</td>
                     <td><span className={`badge ${f.emp.tipo==="efectivo"?"b-blue":"b-gray"}`}>{f.emp.tipo}</span></td>
                     <td className="text-muted">{catsLabel(f.emp)}</td>
-                    <td>{f.tipoDoc?.nombre || "Sin documentación cargada"}{f.doc?.detalle?.titulo_elegido ? ` — ${f.doc.detalle.titulo_elegido}` : ""}</td>
+                    <td>{f.nivel==="rol_asignado" ? "Rol de embarque (sin título cargado)" : (f.tipoDoc?.nombre || "Sin documentación cargada")}{f.doc?.detalle?.titulo_elegido ? ` — ${f.doc.detalle.titulo_elegido}` : ""}</td>
                     <td className="text-mono">{f.doc ? fmtDate(f.doc.fecha_vto) : "—"}</td>
                     <td>
-                      {!f.doc && <span className="badge b-red">Sin cargar</span>}
+                      {f.nivel==="rol_asignado" && <span className="badge b-gray">Solo rol asignado</span>}
+                      {!f.doc && f.nivel!=="rol_asignado" && <span className="badge b-red">Sin cargar</span>}
                       {f.nivel==="vencido" && <span className="badge b-red">Vencido {Math.abs(diasHasta(f.doc.fecha_vto))}d</span>}
                       {f.nivel==="critico" && <span className="badge b-crit">Crítico {diasHasta(f.doc.fecha_vto)}d</span>}
                       {f.nivel==="proximo" && <span className="badge b-amber">A vencer {diasHasta(f.doc.fecha_vto)}d</span>}
