@@ -646,10 +646,17 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
 
   const tipoSel = tiposDoc.find(t => t.id === form.tipo_documento_id);
   const esLibreta = tipoSel?.nombre === "Libreta de Embarque";
-  const esActualizacion = tipoSel?.modo === "actualizacion";
   const esTitulo = /^Título \d/.test(tipoSel?.nombre||"");
-  const esVacuna = tipoSel?.nombre === "COVID" || tipoSel?.nombre === "Fiebre Amarilla";
   const det = form.detalle || {};
+  const labelFecha = (() => {
+    switch (tipoSel?.nombre) {
+      case "Formulario de Datos": return "Fecha de última actualización";
+      case "COC - Armada (oficialidad)": return "Fecha de emisión";
+      case "COVID": case "Fiebre Amarilla": return "Fecha del certificado";
+      case "Políticas de la Compañía": return "Fecha de aceptación";
+      default: return "Fecha de vencimiento";
+    }
+  })();
 
   const handleSave = async () => {
     if (!form.tipo_documento_id) { notify("Seleccioná el tipo de documento"); return; }
@@ -729,7 +736,7 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
                 </FG>
               </>
             ) : tipoSel?.tiene_vencimiento ? (
-              <FG label={esActualizacion ? "Fecha de emisión" : esVacuna ? "Fecha del certificado" : "Fecha de vencimiento"}>
+              <FG label={labelFecha}>
                 <input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/>
               </FG>
             ) : (
