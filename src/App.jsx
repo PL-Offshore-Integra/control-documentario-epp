@@ -602,6 +602,7 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
   const tipoSel = tiposDoc.find(t => t.id === form.tipo_documento_id);
   const esLibreta = (tipoSel?.nombre||"").toLowerCase().includes("libreta");
   const esActualizacion = tipoSel?.modo === "actualizacion";
+  const esTitulo = /^Título \d/.test(tipoSel?.nombre||"");
   const det = form.detalle || {};
 
   const handleSave = async () => {
@@ -641,7 +642,17 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
                 {tiposDoc.map(t=><option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>)}
               </select>
             </FG>
-            {esLibreta ? (
+            {esTitulo ? (
+              <>
+                <FG label="Título">
+                  <select value={det.titulo_elegido||""} onChange={e=>setDet("titulo_elegido",e.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    {TITULOS_POSIBLES.map(t=><option key={t} value={t}>{t}</option>)}
+                  </select>
+                </FG>
+                <FG label="Fecha de vencimiento"><input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/></FG>
+              </>
+            ) : esLibreta ? (
               <>
                 <FG label="¿Posee sticker del título vigente?">
                   <select value={det.posee_sticker ? "si" : "no"} onChange={e=>setDet("posee_sticker", e.target.value==="si")}>
@@ -702,22 +713,14 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
 }
 
 // ─── MODAL DETALLE EMPLEADO ────────────────────────────────────────────────
-function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, titulos, onClose, onDocChange, notify }) {
+function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocChange, notify }) {
   const [showDoc, setShowDoc] = useState(null);
-  const [showTitulo, setShowTitulo] = useState(null);
   const docsEmp = documentos.filter(d => d.empleado_id === empleado.id);
   const oficial = esOficial(empleado);
-  const titulosEmp = (titulos||[]).filter(t => t.empleado_id === empleado.id);
 
   const handleDeleteDoc = async (id) => {
     if (!confirm("¿Eliminar este documento?")) return;
     try { await api.deleteDocumento(id); onDocChange(); notify("Documento eliminado"); }
-    catch(e) { notify("Error: " + e.message); }
-  };
-
-  const handleDeleteTitulo = async (id) => {
-    if (!confirm("¿Eliminar este título?")) return;
-    try { await api.deleteTitulo(id); onDocChange(); notify("Título eliminado"); }
     catch(e) { notify("Error: " + e.message); }
   };
 
@@ -743,42 +746,6 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, titulos, onClose
           <button className="mclose" onClick={onClose}>✕</button>
         </div>
         <div className="mbody">
-          <div className="flex-between" style={{marginBottom:8}}>
-            <div className="card-title" style={{padding:0}}>Títulos {oficial ? "" : "(Marinería: solo uno)"}</div>
-            <button className="btn btn-ghost btn-sm" disabled={!oficial && titulosEmp.length>=1}
-              title={!oficial && titulosEmp.length>=1 ? "Marinería solo puede tener un título" : ""}
-              onClick={()=>setShowTitulo({empleado_id:empleado.id})}>
-              <Ico d={ICONS.plus} size={14}/>Agregar título
-            </button>
-          </div>
-          {titulosEmp.length===0 ? (
-            <div className="info-box" style={{marginBottom:16}}>Sin títulos cargados.</div>
-          ) : (
-            <div className="table-wrap" style={{marginBottom:16}}>
-              <table>
-                <thead><tr><th>Título</th><th>Certificado</th><th>Emitido</th><th>Expira</th><th>Regla</th><th>Limitaciones</th><th></th></tr></thead>
-                <tbody>
-                  {titulosEmp.map(t=>(
-                    <tr key={t.id}>
-                      <td style={{fontWeight:500}}>{t.nombre_titulo}</td>
-                      <td className="text-muted">{t.certificado||"—"}</td>
-                      <td className="text-mono">{fmtDate(t.fecha_emitido)}</td>
-                      <td className="text-mono">{t.fecha_expira ? <DiasChip fechaStr={t.fecha_expira}/> : "—"}</td>
-                      <td className="text-muted">{t.regla||"—"}</td>
-                      <td className="text-muted">{t.limitaciones||"—"}</td>
-                      <td>
-                        <div className="row-actions">
-                          <button className="icon-btn" title="Editar título" onClick={()=>setShowTitulo(t)}><Ico d={ICONS.pencil} size={15}/></button>
-                          <button className="icon-btn danger" title="Eliminar título" onClick={()=>handleDeleteTitulo(t.id)}><Ico d={ICONS.trash} size={15}/></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
           <div className="flex-between" style={{marginBottom:16}}>
             <div style={{fontSize:14,color:"var(--muted)"}}>
               Documentos cargados: <strong className="text-mono" style={{color:"var(--navy)"}}>{ok}/{total}</strong>
@@ -797,7 +764,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, titulos, onClose
                 {checklist.map(({tipo, doc}) => (
                   <tr key={tipo.id} className={!doc ? "falta" : ""}>
                     <td className="text-mono">{tipo.codigo}</td>
-                    <td style={{fontWeight:500}}>{tipo.nombre}</td>
+                    <td style={{fontWeight:500}}>{tipo.nombre}{doc?.detalle?.titulo_elegido ? ` — ${doc.detalle.titulo_elegido}` : ""}</td>
                     <td>{doc?.fecha_vto ? <DiasChip fechaStr={doc.fecha_vto}/> : <span className="badge b-gray">—</span>}</td>
                     <td>
                       {(() => { const est = estadoEfectivo(doc, tipo); return (
@@ -847,66 +814,6 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, titulos, onClose
           notify={notify}
         />
       )}
-      {showTitulo !== null && (
-        <ModalTitulo
-          titulo={showTitulo?.id ? showTitulo : null}
-          empleadoId={empleado.id}
-          onClose={()=>setShowTitulo(null)}
-          onSave={()=>{ onDocChange(); setShowTitulo(null); notify("Título guardado"); }}
-          notify={notify}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── MODAL TÍTULO ──────────────────────────────────────────────────────────
-function ModalTitulo({ titulo, empleadoId, onClose, onSave, notify }) {
-  const [form, setForm] = useState(titulo || { empleado_id: empleadoId, nombre_titulo:"", certificado:"", fecha_emitido:"", fecha_expira:"", regla:"", limitaciones:"" });
-  const [saving, setSaving] = useState(false);
-  const set = (k,v) => setForm(p=>({...p,[k]:v}));
-
-  const handleSave = async () => {
-    if (!form.nombre_titulo.trim()) { notify("Ingresá el nombre del título"); return; }
-    setSaving(true);
-    try {
-      await api.upsertTitulo({
-        ...form,
-        fecha_emitido: form.fecha_emitido || null,
-        fecha_expira: form.fecha_expira || null,
-      });
-      onSave(); onClose();
-    } catch(e) { notify("Error: " + e.message); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="overlay">
-      <div className="modal">
-        <div className="mhdr">
-          <div className="mtitle">{titulo?.id ? "Editar título" : "Agregar título"}</div>
-          <button className="mclose" onClick={onClose}>✕</button>
-        </div>
-        <div className="mbody">
-          <div className="form-single">
-            <FG label="Título *">
-              <select value={form.nombre_titulo||""} onChange={e=>set("nombre_titulo",e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {TITULOS_POSIBLES.map(t=><option key={t} value={t}>{t}</option>)}
-              </select>
-            </FG>
-            <FG label="N° de certificado"><input value={form.certificado||""} onChange={e=>set("certificado",e.target.value)}/></FG>
-            <FG label="Fecha de emisión"><input type="date" value={form.fecha_emitido||""} onChange={e=>set("fecha_emitido",e.target.value)}/></FG>
-            <FG label="Fecha de expiración"><input type="date" value={form.fecha_expira||""} onChange={e=>set("fecha_expira",e.target.value)}/></FG>
-            <FG label="Regla"><input value={form.regla||""} onChange={e=>set("regla",e.target.value)} placeholder='Ej: II/2 A II/1 y 2'/></FG>
-            <FG label="Limitaciones"><input value={form.limitaciones||""} onChange={e=>set("limitaciones",e.target.value)} placeholder="Ej: NONE"/></FG>
-          </div>
-        </div>
-        <div className="mftr">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"Guardar"}</button>
-        </div>
-      </div>
     </div>
   );
 }
