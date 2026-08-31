@@ -1014,8 +1014,24 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
     (!puesto || catsOf(e).includes(puesto))
   );
 
+  const esFiltroTitulo = tipoDocumento === "__titulo__";
+
   const filas = [];
   empleadosFiltrados.forEach(emp => {
+    // Caso especial "Título (1 y 2)": solo interesa mostrar a quien tiene LOS DOS
+    // cargados (para detectar más de una titulación) — mostrar solo uno cargado
+    // no aporta nada visualmente, así que esos tripulantes no aparecen acá.
+    if (esFiltroTitulo) {
+      const docsTitulo = tiposDocFiltrados.map(t => ({ t, doc: documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id) }));
+      const cargados = docsTitulo.filter(x=>x.doc).length;
+      if (cargados < tiposDocFiltrados.length) return;
+      docsTitulo.forEach(({t, doc}) => {
+        const dias = doc.fecha_vto ? diasHasta(doc.fecha_vto) : null;
+        const color = dias!=null ? getAlertColor(dias) : "ok";
+        filas.push({ emp, tipoDoc: t, doc, nivel: color, dias });
+      });
+      return;
+    }
     tiposDocFiltrados.forEach(t => {
       const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
       if (!doc) { filas.push({ emp, tipoDoc: t, doc: null, nivel: "sin_doc" }); return; }
@@ -1090,7 +1106,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
                     <td style={{fontWeight:500,paddingLeft:24}}>{f.emp.apellido_nombre}</td>
                     <td><span className={`badge ${f.emp.tipo==="efectivo"?"b-blue":"b-gray"}`}>{f.emp.tipo}</span></td>
                     <td className="text-muted">{catsLabel(f.emp)}</td>
-                    <td>{f.tipoDoc?.nombre || "Sin documentación cargada"}</td>
+                    <td>{f.tipoDoc?.nombre || "Sin documentación cargada"}{f.doc?.detalle?.titulo_elegido ? ` — ${f.doc.detalle.titulo_elegido}` : ""}</td>
                     <td className="text-mono">{f.doc ? fmtDate(f.doc.fecha_vto) : "—"}</td>
                     <td>
                       {!f.doc && <span className="badge b-red">Sin cargar</span>}
