@@ -1004,6 +1004,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
   const [puesto, setPuesto] = useState("");
   const [tipoDocumento, setTipoDocumento] = useState("");
   const [nivelFiltro, setNivelFiltro] = useState("");
+  const [tituloBuscado, setTituloBuscado] = useState("");
 
   const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
   const tiposDocFiltrados = tipoDocumento === "__titulo__" ? tiposDoc.filter(t=>/^Título \d/.test(t.nombre))
@@ -1020,6 +1021,19 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
 
   const filas = [];
   empleadosFiltrados.forEach(emp => {
+    // Búsqueda por título específico (ej. "Capitán Fluvial"): no importa si lo
+    // tiene cargado en el slot de Título 1 o Título 2 — busca en los dos.
+    if (tituloBuscado) {
+      const docsTitulo = tiposDoc.filter(t=>/^Título \d/.test(t.nombre))
+        .map(t => ({ t, doc: documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id) }))
+        .filter(x => x.doc?.detalle?.titulo_elegido === tituloBuscado);
+      docsTitulo.forEach(({t, doc}) => {
+        const dias = doc.fecha_vto ? diasHasta(doc.fecha_vto) : null;
+        const color = dias!=null ? getAlertColor(dias) : "ok";
+        filas.push({ emp, tipoDoc: t, doc, nivel: color, dias });
+      });
+      return;
+    }
     // Caso especial "Título (1 y 2)": solo interesa mostrar a quien tiene LOS DOS
     // cargados (para detectar más de una titulación) — mostrar solo uno cargado
     // no aporta nada visualmente, así que esos tripulantes no aparecen acá.
@@ -1071,7 +1085,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
           <option value="">Todos los puestos</option>
           {puestosDisponibles.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
-        <select className="filter-select" value={tipoDocumento} onChange={e=>setTipoDocumento(e.target.value)}>
+        <select className="filter-select" value={tipoDocumento} onChange={e=>{setTipoDocumento(e.target.value); setTituloBuscado("");}}>
           <option value="">Todos los documentos</option>
           {(() => {
             let tituloYaListado = false;
@@ -1084,6 +1098,10 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
               return <option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>;
             });
           })()}
+        </select>
+        <select className="filter-select" value={tituloBuscado} onChange={e=>{setTituloBuscado(e.target.value); if(e.target.value) setTipoDocumento("");}}>
+          <option value="">Buscar título específico...</option>
+          {TITULOS_POSIBLES.map(t=><option key={t} value={t}>{t}</option>)}
         </select>
         <select className="filter-select" value={nivelFiltro} onChange={e=>setNivelFiltro(e.target.value)}>
           <option value="">Todos los estados</option>
