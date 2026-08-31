@@ -817,7 +817,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
                   <tr key={tipo.id} className={!doc ? "falta" : ""}>
                     <td className="text-mono">{tipo.codigo}</td>
                     <td style={{fontWeight:500}}>{tipo.nombre}{doc?.detalle?.titulo_elegido ? ` — ${doc.detalle.titulo_elegido}` : ""}</td>
-                    <td>{doc?.fecha_vto ? ((tipo.modo==="actualizacion"||tipo.modo==="registro") ? <span className="text-mono">{fmtDate(doc.fecha_vto)}</span> : <DiasChip fechaStr={doc.fecha_vto}/>) : <span className="badge b-gray">—</span>}</td>
+                    <td className="text-mono">{doc?.fecha_vto ? fmtDate(doc.fecha_vto) : "—"}</td>
                     <td>
                       {(() => { const est = estadoEfectivo(doc, tipo); return (
                         est === "sin_cargar" ? <span className="badge b-red">Sin cargar</span> :
@@ -1796,9 +1796,9 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                             <td>{(() => { const est = estadoEfectivo(doc, t); return (
                               est === "sin_cargar" ? <span className="badge b-red">Sin cargar</span> :
                               est === "sin_fecha" ? <span className="badge b-amber">Sin fecha cargada</span> :
-                              est === "vencido" ? <DiasChip fechaStr={doc.fecha_vto}/> :
-                              est === "critico" ? <DiasChip fechaStr={doc.fecha_vto}/> :
-                              est === "proximo" ? <DiasChip fechaStr={doc.fecha_vto}/> :
+                              est === "vencido" ? <span className="badge b-red">Vencido</span> :
+                              est === "critico" ? <span className="badge b-crit">Crítico</span> :
+                              est === "proximo" ? <span className="badge b-amber">A vencer</span> :
                               est === "desactualizado" ? <span className="badge b-red">Desactualizado</span> :
                               est === "actualizado" ? <span className="badge b-green">Actualizado</span> :
                               <span className="badge b-green">Vigente</span>
