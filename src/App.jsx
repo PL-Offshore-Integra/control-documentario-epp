@@ -40,17 +40,6 @@ function estadoEfectivo(doc, tipo) {
   }
   return doc.estado === "no_aplica" ? "no_aplica" : "vigente";
 }
-// Jerarquía: de qué puesto depende si aplican título múltiple, COC y STCW Oficialidad.
-const JERARQUIA = {
-  "Capitán Ultramar":"oficial_cubierta", "Capitán Fluvial":"oficial_cubierta", "Of. Fluvial":"oficial_cubierta",
-  "Piloto de Ultr. 1ra":"oficial_cubierta", "Oficial de la Guardia de Navegación":"oficial_cubierta",
-  "Jefe de Máquinas":"oficial_maquina", "Maquinista Naval de 1ra":"oficial_maquina",
-  "Jefe Conductor":"oficial_maquina", "Conductor de Máquinas Navales de 1ra":"oficial_maquina",
-  "Oficial de la Guardia de Máquinas":"oficial_maquina",
-  "Auxiliar de Máquinas":"marineria", "1er Cabo":"marineria", "Cocinero":"marineria",
-  "Marinero":"marineria", "Contramaestre":"marineria", "Enfermero":"marineria", "Mozo":"marineria",
-};
-// Un tripulante puede tener más de un puesto (ej: Marinero y Auxiliar de Máquinas).
 // catsOf soporta datos viejos que todavía tengan un solo "categoria" en vez de "categorias".
 function catsOf(emp) {
   if (Array.isArray(emp?.categorias)) return emp.categorias.filter(Boolean);
@@ -479,23 +468,43 @@ function FG({ label, children, full }) {
 }
 
 // ─── PUESTOS (categoría) ───────────────────────────────────────────────────
-// Lista única de puestos: la usa el alta/edición de tripulante y los filtros
-// por puesto del Dashboard y los listados de Efectivos/Relevos.
-const CATEGORIAS = [
-  "Capitán Ultramar","Capitán Fluvial","Of. Fluvial","Piloto de Ultr. 1ra","Oficial de la Guardia de Navegación",
-  "Jefe de Máquinas","Maquinista Naval de 1ra","Jefe Conductor","Conductor de Máquinas Navales de 1ra","Oficial de la Guardia de Máquinas",
-  "Auxiliar de Máquinas","1er Cabo","Cocinero","Marinero","Contramaestre","Enfermero","Mozo",
+// Lista de puestos, en el orden exacto que indicaste — no se reordena ni se
+// agrupa alfabéticamente. Es DISTINTA de la lista de títulos (más abajo):
+// un puesto es el cargo del tripulante; un título es una titulación que
+// puede tener, y usan nomenclaturas distintas (esta no separa Ultramar/Fluvial
+// en todos los casos, la de títulos sí).
+const ROLES_NAVALES = [
+  { nombre:"Capitán Ultramar", jerarquia:"oficial_cubierta" },
+  { nombre:"Capitán Fluvial", jerarquia:"oficial_cubierta" },
+  { nombre:"Of. Fluvial", jerarquia:"oficial_cubierta" },
+  { nombre:"Piloto de Ultr. 1ra", jerarquia:"oficial_cubierta" },
+  { nombre:"Oficial de la Guardia de Navegación", jerarquia:"oficial_cubierta" },
+  { nombre:"Jefe de Máquinas", jerarquia:"oficial_maquina" },
+  { nombre:"Maquinista Naval de 1ra", jerarquia:"oficial_maquina" },
+  { nombre:"Jefe Conductor", jerarquia:"oficial_maquina" },
+  { nombre:"Conductor de Máquinas Navales de 1ra", jerarquia:"oficial_maquina" },
+  { nombre:"Oficial de la Guardia de Máquinas", jerarquia:"oficial_maquina" },
+  { nombre:"Auxiliar de Máquinas", jerarquia:"marineria" },
+  { nombre:"1er Cabo", jerarquia:"marineria" },
+  { nombre:"Cocinero", jerarquia:"marineria" },
+  { nombre:"Marinero", jerarquia:"marineria" },
+  { nombre:"Contramaestre", jerarquia:"marineria" },
+  { nombre:"Enfermero", jerarquia:"marineria" },
+  { nombre:"Mozo", jerarquia:"marineria" },
 ];
-// Agrupa los puestos por jerarquía, en el mismo orden en que aparecen en CATEGORIAS,
-// para mostrarlos ordenados en el formulario en vez de todos mezclados.
+const CATEGORIAS = ROLES_NAVALES.map(r => r.nombre);
+const JERARQUIA = Object.fromEntries(ROLES_NAVALES.map(r => [r.nombre, r.jerarquia]));
+// Agrupa los puestos por jerarquía, respetando el orden de arriba dentro de
+// cada grupo — solo para mostrarlos con subtítulo en el desplegable, no cambia el orden real.
 const GRUPOS_PUESTO = [
   { key:"oficial_cubierta", titulo:"Oficial de Cubierta" },
   { key:"oficial_maquina", titulo:"Oficial de Máquina" },
   { key:"marineria", titulo:"Marinería" },
 ].map(g => ({ ...g, puestos: CATEGORIAS.filter(c => JERARQUIA[c] === g.key) }));
-// Lista fija de títulos posibles, para elegir de un desplegable y no escribir
-// a mano con variantes de texto distintas para lo mismo. Aplica a Título 1 y
-// Título 2 por igual — cualquier puesto puede tener más de un título.
+
+// ─── TÍTULOS ───────────────────────────────────────────────────────────────
+// Lista propia y distinta de la de puestos, en el orden exacto que diste,
+// para el desplegable de Título 1 / Título 2.
 const TITULOS_POSIBLES = [
   "Capitán de Ultramar","Capitán Fluvial",
   "1er Oficial de Cubierta de Ultramar","1er Oficial Fluvial",
@@ -1045,8 +1054,17 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
         </select>
         <select className="filter-select" value={tipoDocumento} onChange={e=>setTipoDocumento(e.target.value)}>
           <option value="">Todos los documentos</option>
-          {tiposDoc.filter(t=>!/^Título \d/.test(t.nombre)).map(t=><option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>)}
-          {tiposDoc.some(t=>/^Título \d/.test(t.nombre)) && <option value="__titulo__">Título (1 y 2)</option>}
+          {(() => {
+            let tituloYaListado = false;
+            return tiposDoc.map(t => {
+              if (/^Título \d/.test(t.nombre)) {
+                if (tituloYaListado) return null;
+                tituloYaListado = true;
+                return <option key="__titulo__" value="__titulo__">Título (1 y 2)</option>;
+              }
+              return <option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>;
+            });
+          })()}
         </select>
       </div>
 
