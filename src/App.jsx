@@ -493,6 +493,10 @@ const GRUPOS_PUESTO = [
   { key:"oficial_maquina", titulo:"Oficial de Máquina" },
   { key:"marineria", titulo:"Marinería" },
 ].map(g => ({ ...g, puestos: CATEGORIAS.filter(c => JERARQUIA[c] === g.key) }));
+// Lista fija de títulos posibles (son los mismos nombres que los puestos de
+// Oficialidad), para que se elijan de un desplegable y no se escriban a mano
+// con variantes de texto distintas para lo mismo.
+const TITULOS_POSIBLES = CATEGORIAS.filter(c => JERARQUIA[c] !== "marineria");
 
 // ─── BUQUES ────────────────────────────────────────────────────────────────
 // Igual que CATEGORIAS: lista fija en código, no tabla aparte, porque son solo dos.
@@ -885,7 +889,12 @@ function ModalTitulo({ titulo, empleadoId, onClose, onSave, notify }) {
         </div>
         <div className="mbody">
           <div className="form-single">
-            <FG label="Título *"><input value={form.nombre_titulo} onChange={e=>set("nombre_titulo",e.target.value)} placeholder="Ej: Capitán de Ultramar"/></FG>
+            <FG label="Título *">
+              <select value={form.nombre_titulo||""} onChange={e=>set("nombre_titulo",e.target.value)}>
+                <option value="">Seleccionar...</option>
+                {TITULOS_POSIBLES.map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
+            </FG>
             <FG label="N° de certificado"><input value={form.certificado||""} onChange={e=>set("certificado",e.target.value)}/></FG>
             <FG label="Fecha de emisión"><input type="date" value={form.fecha_emitido||""} onChange={e=>set("fecha_emitido",e.target.value)}/></FG>
             <FG label="Fecha de expiración"><input type="date" value={form.fecha_expira||""} onChange={e=>set("fecha_expira",e.target.value)}/></FG>
