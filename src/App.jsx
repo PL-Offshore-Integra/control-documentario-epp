@@ -333,6 +333,16 @@ tr.falta td{background:#FDF6F5}
 .badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
 .b-red{background:#FAEAE8;color:#B3261E}
 .warning-box{background:#FAEAE8;color:#B3261E;border:1px solid #E8B4AE;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.4;margin:-4px 0 4px}
+.crewlist-print{color:#000;background:#fff}
+.crewlist-print table{color:#000}
+@media print{
+  body *{visibility:hidden}
+  .crewlist-print,.crewlist-print *{visibility:visible}
+  .crewlist-print{position:absolute;left:0;top:0;width:100%}
+  .no-print{display:none!important}
+  .overlay{position:static;background:none}
+  .modal{box-shadow:none;max-width:none;max-height:none}
+}
 .b-crit{background:#FBEDE4;color:#9A3F16}
 .b-amber{background:#FBF1E3;color:#8F5A0B}
 .b-green{background:#E8F3EF;color:#0E7A5F}
@@ -647,6 +657,7 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
   const tipoSel = tiposDoc.find(t => t.id === form.tipo_documento_id);
   const esLibreta = tipoSel?.nombre === "Libreta de Embarque";
   const esTitulo = /^Título \d/.test(tipoSel?.nombre||"");
+  const esFormularioDatos = tipoSel?.nombre === "Formulario de Datos";
   const det = form.detalle || {};
   const labelFecha = (() => {
     switch (tipoSel?.nombre) {
@@ -733,6 +744,22 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
                     <option value="no">No</option>
                     <option value="si">Sí</option>
                   </select>
+                </FG>
+              </>
+            ) : esFormularioDatos ? (
+              <>
+                <FG label="Nacionalidad"><input type="text" value={det.nacionalidad||""} onChange={e=>setDet("nacionalidad",e.target.value)}/></FG>
+                <FG label="Fecha de nacimiento"><input type="date" value={det.fecha_nacimiento||""} onChange={e=>setDet("fecha_nacimiento",e.target.value)}/></FG>
+                <FG label="Lugar de nacimiento"><input type="text" value={det.lugar_nacimiento||""} onChange={e=>setDet("lugar_nacimiento",e.target.value)}/></FG>
+                <FG label="Sexo">
+                  <select value={det.sexo||""} onChange={e=>setDet("sexo",e.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    <option value="M">Masculino</option>
+                    <option value="F">Femenino</option>
+                  </select>
+                </FG>
+                <FG label={labelFecha}>
+                  <input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/>
                 </FG>
               </>
             ) : tipoSel?.tiene_vencimiento ? (
@@ -1654,6 +1681,7 @@ function ModalEditarFecha({ asign, nombre, onClose, onSave, notify }) {
 // ─── MODAL NUEVO PROYECTO (rota el proyecto activo de un buque) ────────────
 function ModalNuevoProyecto({ buque, proyectoAnterior, onClose, onSave, notify }) {
   const [nombre, setNombre] = useState("");
+  const [puerto, setPuerto] = useState("");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -1663,7 +1691,7 @@ function ModalNuevoProyecto({ buque, proyectoAnterior, onClose, onSave, notify }
       if (proyectoAnterior) {
         await api.upsertProyecto({ ...proyectoAnterior, activo: false, fecha_fin: fechaHoy() });
       }
-      await api.upsertProyecto({ nombre: nombre.trim(), buque, fecha_inicio: fechaHoy(), activo: true });
+      await api.upsertProyecto({ nombre: nombre.trim(), buque, puerto: puerto.trim() || null, fecha_inicio: fechaHoy(), activo: true });
       onSave(); onClose();
     } catch(e) { notify("Error: "+e.message); }
     finally { setSaving(false); }
@@ -1684,10 +1712,109 @@ function ModalNuevoProyecto({ buque, proyectoAnterior, onClose, onSave, notify }
             </div>
           )}
           <FG label="Nombre del proyecto *"><input value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: Arendal"/></FG>
+          <FG label="Puerto de embarque"><input value={puerto} onChange={e=>setPuerto(e.target.value)} placeholder="Ej: Buenos Aires"/></FG>
         </div>
         <div className="mftr">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"Crear proyecto"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL CREW LIST (FAL Form 5, imprimible / guardar como PDF) ───────────
+function ModalCrewList({ proyecto, rol, documentos, tiposDoc, onClose }) {
+  const tDni = tiposDoc.find(t=>t.nombre==="DNI");
+  const tLibreta = tiposDoc.find(t=>t.nombre==="Libreta de Embarque");
+  const tFormulario = tiposDoc.find(t=>t.nombre==="Formulario de Datos");
+
+  const filas = rol.map(({ asign, emp }) => {
+    const docDni = tDni && documentos.find(d=>d.empleado_id===emp.id && d.tipo_documento_id===tDni.id);
+    const docLibreta = tLibreta && documentos.find(d=>d.empleado_id===emp.id && d.tipo_documento_id===tLibreta.id);
+    const docForm = tFormulario && documentos.find(d=>d.empleado_id===emp.id && d.tipo_documento_id===tFormulario.id);
+    const det = docForm?.detalle || {};
+    return {
+      emp, asign,
+      nacionalidad: det.nacionalidad || "",
+      fechaNacimiento: det.fecha_nacimiento || "",
+      lugarNacimiento: det.lugar_nacimiento || "",
+      sexo: det.sexo || "",
+      dni: emp.dni || "",
+      dniVto: docDni?.fecha_vto || "",
+      libreta: emp.libreta || "",
+      libretaVto: docLibreta?.fecha_vto || "",
+    };
+  });
+
+  const faltantes = filas.filter(f => !f.nacionalidad || !f.fechaNacimiento || !f.sexo);
+
+  return (
+    <div className="overlay">
+      <div className="modal" style={{maxWidth:1150}}>
+        <div className="mhdr no-print">
+          <div>
+            <div className="mtitle">Crew List — {proyecto.buque}</div>
+            <div className="msub">{proyecto.nombre}</div>
+          </div>
+          <button className="mclose" onClick={onClose}>✕</button>
+        </div>
+        <div className="mbody">
+          {faltantes.length > 0 && (
+            <div className="warning-box no-print" style={{marginBottom:16}}>
+              ⚠ Faltan datos filiatorios (nacionalidad, fecha de nacimiento o sexo) en el Formulario de Datos de: {faltantes.map(f=>f.emp.apellido_nombre).join(", ")}. Van a salir en blanco en el PDF — cargalos desde el legajo antes de imprimir si hace falta.
+            </div>
+          )}
+          <div className="crewlist-print">
+            <div style={{textAlign:"center",fontWeight:700,fontSize:16,marginBottom:12,letterSpacing:"2px"}}>CREW LIST</div>
+            <table style={{width:"100%",fontSize:11,borderCollapse:"collapse",marginBottom:8}} border="1" cellPadding="4">
+              <tbody>
+                <tr>
+                  <td><strong>1. Name of the ship:</strong> {proyecto.buque}</td>
+                  <td><strong>2. Port of arrival / departure:</strong> {proyecto.puerto || "—"}</td>
+                  <td><strong>3. Date:</strong> {fmtDate(fechaHoy())}</td>
+                </tr>
+                <tr>
+                  <td><strong>7. Number of persons on board:</strong> {filas.length}</td>
+                  <td colSpan={2}><strong>Proyecto:</strong> {proyecto.nombre}</td>
+                </tr>
+              </tbody>
+            </table>
+            <table style={{width:"100%",fontSize:10,borderCollapse:"collapse"}} border="1" cellPadding="3">
+              <thead>
+                <tr>
+                  <th>No</th><th>Family name, given names</th><th>Rank or rating</th><th>Nationality</th>
+                  <th>Date and place of birth</th><th>Sex</th>
+                  <th>Passport-ID</th><th>Expire date</th>
+                  <th>Seaman's passport</th><th>Expire date</th>
+                  <th>Port of embarkation</th><th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filas.map((f,i) => (
+                  <tr key={f.emp.id}>
+                    <td style={{textAlign:"center"}}>{i+1}</td>
+                    <td>{f.emp.apellido_nombre}</td>
+                    <td>{catsLabel(f.emp)}</td>
+                    <td>{f.nacionalidad}</td>
+                    <td>{f.fechaNacimiento ? fmtDate(f.fechaNacimiento) : ""}{f.lugarNacimiento ? ` — ${f.lugarNacimiento}` : ""}</td>
+                    <td style={{textAlign:"center"}}>{f.sexo}</td>
+                    <td>{f.dni}</td>
+                    <td>{f.dniVto ? fmtDate(f.dniVto) : ""}</td>
+                    <td>{f.libreta}</td>
+                    <td>{f.libretaVto ? fmtDate(f.libretaVto) : ""}</td>
+                    <td>{proyecto.puerto || ""}</td>
+                    <td>{fmtDate(f.asign.fecha_desde)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{marginTop:28,fontSize:12}}>Date and signature by master, authorised agent or officer: ________________________________</div>
+          </div>
+        </div>
+        <div className="mftr no-print">
+          <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
+          <button className="btn btn-primary" onClick={()=>window.print()}>Imprimir / Guardar PDF</button>
         </div>
       </div>
     </div>
@@ -1702,6 +1829,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const [modalAsignar, setModalAsignar] = useState(false);
   const [modalProyecto, setModalProyecto] = useState(false);
   const [editarFecha, setEditarFecha] = useState(null);
+  const [modalCrewList, setModalCrewList] = useState(false);
 
   const proyectoActivo = proyectos.find(p=>p.buque===buque && p.activo);
   const fechaEsHoy = fecha === fechaHoy();
@@ -1754,6 +1882,9 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
         <FG label="Ver rol a la fecha"><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{height:36}}/></FG>
         <div className="filter-spacer" />
         <button className="btn btn-ghost" onClick={()=>setModalProyecto(true)}>{proyectoActivo?"Nuevo proyecto":"Crear proyecto"}</button>
+        {proyectoActivo && rol.length>0 && (
+          <button className="btn btn-ghost" onClick={()=>setModalCrewList(true)}>Generar Crew List</button>
+        )}
         {proyectoActivo && fechaEsHoy && (
           <button className="btn btn-primary" onClick={()=>setModalAsignar(true)}><Ico d={ICONS.plus} size={15}/>Embarcar tripulante</button>
         )}
@@ -1870,6 +2001,15 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
           onClose={()=>setModalProyecto(false)}
           onSave={()=>{ onReload(); notify("Proyecto creado"); }}
           notify={notify}
+        />
+      )}
+      {modalCrewList && proyectoActivo && (
+        <ModalCrewList
+          proyecto={proyectoActivo}
+          rol={rol}
+          documentos={documentos}
+          tiposDoc={tiposDoc}
+          onClose={()=>setModalCrewList(false)}
         />
       )}
     </div>
