@@ -26,12 +26,39 @@ function fechaHoy() { return new Date().toISOString().slice(0,10); }
 // para casos que no corresponden a este tripulante).
 function estadoEfectivo(doc, tipo) {
   if (!doc) return "sin_cargar";
-  if (tipo?.tiene_vencimiento) {
+  const modo = tipo?.modo || (tipo?.tiene_vencimiento ? "vencimiento" : "checklist");
+  if (modo === "actualizacion") {
+    // No vence: se desactualiza. fecha_vto guarda la fecha de última actualización.
+    if (!doc.fecha_vto) return "sin_fecha";
+    const antiguedadDias = -diasHasta(doc.fecha_vto);
+    const umbral = tipo.umbral_dias || 90;
+    return antiguedadDias > umbral ? "desactualizado" : "actualizado";
+  }
+  if (modo === "vencimiento") {
     if (!doc.fecha_vto) return "sin_fecha";
     return getAlertColor(diasHasta(doc.fecha_vto)); // vencido | critico | proximo | ok
   }
   return doc.estado === "no_aplica" ? "no_aplica" : "vigente";
 }
+// Jerarquía: de qué puesto depende si aplican título múltiple, COC y STCW Oficialidad.
+const JERARQUIA = {
+  "Capitán Ultramar":"oficial_cubierta", "Capitán Fluvial":"oficial_cubierta", "Of. Fluvial":"oficial_cubierta",
+  "Piloto de Ultr. 1ra":"oficial_cubierta", "Oficial de la Guardia de Navegación":"oficial_cubierta",
+  "Jefe de Máquinas":"oficial_maquina", "Maquinista Naval de 1ra":"oficial_maquina",
+  "Jefe Conductor":"oficial_maquina", "Conductor de Máquinas Navales de 1ra":"oficial_maquina",
+  "Oficial de la Guardia de Máquinas":"oficial_maquina",
+  "Auxiliar de Máquinas":"marineria", "1er Cabo":"marineria", "Cocinero":"marineria",
+  "Marinero":"marineria", "Contramaestre":"marineria", "Enfermero":"marineria", "Mozo":"marineria",
+};
+// Un tripulante puede tener más de un puesto (ej: Marinero y Auxiliar de Máquinas).
+// catsOf soporta datos viejos que todavía tengan un solo "categoria" en vez de "categorias".
+function catsOf(emp) {
+  if (Array.isArray(emp?.categorias)) return emp.categorias.filter(Boolean);
+  if (emp?.categoria) return [emp.categoria];
+  return [];
+}
+function catsLabel(emp) { const c = catsOf(emp); return c.length ? c.join(" · ") : "—"; }
+function esOficial(emp) { return catsOf(emp).some(c => JERARQUIA[c] && JERARQUIA[c] !== "marineria"); }
 
 // ─── API ───────────────────────────────────────────────────────────────────
 const api = {
@@ -50,7 +77,7 @@ const api = {
     if (error) throw error;
   },
   async getTiposDoc() {
-    const { data, error } = await supabase.from("tipos_documento").select("*").order("codigo");
+    const { data, error } = await supabase.from("tipos_documento").select("*").order("orden", { ascending: true, nullsFirst: false }).order("codigo");
     if (error) throw error;
     return data || [];
   },
@@ -66,6 +93,20 @@ const api = {
   },
   async deleteDocumento(id) {
     const { error } = await supabase.from("documentos_empleado").delete().eq("id", id);
+    if (error) throw error;
+  },
+  async getTitulos() {
+    const { data, error } = await supabase.from("titulos_empleado").select("*").order("fecha_expira");
+    if (error) throw error;
+    return data || [];
+  },
+  async upsertTitulo(t) {
+    const { data, error } = await supabase.from("titulos_empleado").upsert([t]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async deleteTitulo(id) {
+    const { error } = await supabase.from("titulos_empleado").delete().eq("id", id);
     if (error) throw error;
   },
   async subirArchivo(file, bucket, path) {
@@ -256,6 +297,9 @@ tr.falta td{background:#FDF6F5}
 .filter-input:focus,.filter-select:focus{border-width:2px;border-color:var(--action);padding:0 9px}
 .filter-spacer{margin-left:auto}
 .proyecto-tag{display:flex;align-items:center;height:36px;padding:0 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);font-size:14px;color:var(--navy);font-weight:500;white-space:nowrap}
+.checklist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 16px;margin-top:4px}
+.checklist-item{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text)}
+.checklist-item input{width:16px;height:16px}
 
 /* ── BADGES ──────────────────────────────────────────────────────────────── */
 .badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
@@ -435,7 +479,11 @@ function FG({ label, children, full }) {
 // ─── PUESTOS (categoría) ───────────────────────────────────────────────────
 // Lista única de puestos: la usa el alta/edición de tripulante y los filtros
 // por puesto del Dashboard y los listados de Efectivos/Relevos.
-const CATEGORIAS = ["Capitán Ultramar","Capitán Fluvial","Of. Fluvial","Piloto de Ultr. 1ra","Jefe Conductor","I Conductor","I Maquinista","Aux. de Máquinas","Contramaestre","I Cabo Engrasador","Marinero","Cocinero"];
+const CATEGORIAS = [
+  "Capitán Ultramar","Capitán Fluvial","Of. Fluvial","Piloto de Ultr. 1ra","Oficial de la Guardia de Navegación",
+  "Jefe de Máquinas","Maquinista Naval de 1ra","Jefe Conductor","Conductor de Máquinas Navales de 1ra","Oficial de la Guardia de Máquinas",
+  "Auxiliar de Máquinas","1er Cabo","Cocinero","Marinero","Contramaestre","Enfermero","Mozo",
+];
 
 // ─── BUQUES ────────────────────────────────────────────────────────────────
 // Igual que CATEGORIAS: lista fija en código, no tabla aparte, porque son solo dos.
@@ -454,16 +502,24 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
   const [form, setForm] = useState(() => {
     if (emp) {
       const { apellido, nombre } = splitApellidoNombre(emp.apellido_nombre);
-      return { ...emp, apellido, nombre };
+      const categorias = Array.isArray(emp.categorias) ? emp.categorias : (emp.categoria ? [emp.categoria] : []);
+      return { ...emp, apellido, nombre, categorias };
     }
-    return { apellido:"", nombre:"", dni:"", libreta:"", categoria:"", tipo:"efectivo", activo:true };
+    return { apellido:"", nombre:"", dni:"", libreta:"", categorias:[], tipo:"efectivo", activo:true };
   });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(p => ({...p,[k]:v}));
+  const categoriasSel = Array.isArray(form.categorias) ? form.categorias : (form.categoria ? [form.categoria] : []);
+  const togglePuesto = (c) => setForm(p => {
+    const actuales = Array.isArray(p.categorias) ? p.categorias : (p.categoria ? [p.categoria] : []);
+    const nuevas = actuales.includes(c) ? actuales.filter(x=>x!==c) : [...actuales, c];
+    return { ...p, categorias: nuevas, categoria: null };
+  });
 
   const handleSave = async () => {
     if (!form.apellido.trim()) { notify("Ingresá el apellido"); return; }
     if (!form.nombre.trim()) { notify("Ingresá el nombre"); return; }
+    if (categoriasSel.length === 0) { notify("Elegí al menos un puesto"); return; }
     setSaving(true);
     try {
       const { apellido, nombre, ...resto } = form;
@@ -488,12 +544,6 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
             <FG label="Nombre *"><input value={form.nombre} onChange={e=>set("nombre",e.target.value)}/></FG>
             <FG label="DNI"><input value={form.dni||""} onChange={e=>set("dni",e.target.value)}/></FG>
             <FG label="Libreta"><input value={form.libreta||""} onChange={e=>set("libreta",e.target.value)}/></FG>
-            <FG label="Categoría">
-              <select value={form.categoria||""} onChange={e=>set("categoria",e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-            </FG>
             <FG label="Tipo">
               <select value={form.tipo} onChange={e=>set("tipo",e.target.value)}>
                 <option value="efectivo">Efectivo</option>
@@ -501,6 +551,16 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
               </select>
             </FG>
           </div>
+          <FG label={`Puestos * (puede tener más de uno${categoriasSel.length?` — ${categoriasSel.length} elegido${categoriasSel.length===1?"":"s"}`:""})`}>
+            <div className="checklist-grid">
+              {CATEGORIAS.map(c=>(
+                <label key={c} className="checklist-item">
+                  <input type="checkbox" checked={categoriasSel.includes(c)} onChange={()=>togglePuesto(c)}/>
+                  <span>{c}</span>
+                </label>
+              ))}
+            </div>
+          </FG>
         </div>
         <div className="mftr">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
@@ -513,10 +573,16 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
 
 // ─── MODAL DOCUMENTO ───────────────────────────────────────────────────────
 function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) {
-  const [form, setForm] = useState(doc || { empleado_id: empleadoId, tipo_documento_id:"", fecha_vto:"", estado:"vigente", archivo_url:"", notas:"" });
+  const [form, setForm] = useState(doc || { empleado_id: empleadoId, tipo_documento_id:"", fecha_vto:"", estado:"vigente", archivo_url:"", notas:"", detalle:null });
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(p=>({...p,[k]:v}));
+  const setDet = (k,v) => setForm(p=>({...p, detalle:{...(p.detalle||{}), [k]:v}}));
+
+  const tipoSel = tiposDoc.find(t => t.id === form.tipo_documento_id);
+  const esLibreta = (tipoSel?.nombre||"").toLowerCase().includes("libreta");
+  const esActualizacion = tipoSel?.modo === "actualizacion";
+  const det = form.detalle || {};
 
   const handleSave = async () => {
     if (!form.tipo_documento_id) { notify("Seleccioná el tipo de documento"); return; }
@@ -528,13 +594,17 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
         const path = `${empleadoId}/${form.tipo_documento_id}/${Date.now()}.${ext}`;
         url = await api.subirArchivo(file, "documentos", path);
       }
-      const saved = await api.upsertDocumento({ ...form, archivo_url: url, fecha_vto: form.fecha_vto || null });
+      let fechaVto = form.fecha_vto || null;
+      if (esLibreta) {
+        // La fecha "efectiva" (la que usan las alertas de todo el sistema) sale
+        // del sticker si lo tiene, o si no de la cédula de embarque.
+        fechaVto = det.posee_sticker ? (det.fecha_sticker || null) : (det.fecha_cedula || null);
+      }
+      const saved = await api.upsertDocumento({ ...form, archivo_url: url, fecha_vto: fechaVto });
       onSave(saved); onClose();
     } catch(e) { notify("Error: " + e.message); }
     finally { setSaving(false); }
   };
-
-  const tipoSel = tiposDoc.find(t => t.id === form.tipo_documento_id);
 
   return (
     <div className="overlay">
@@ -551,8 +621,40 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
                 {tiposDoc.map(t=><option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>)}
               </select>
             </FG>
-            {tipoSel?.tiene_vencimiento ? (
-              <FG label="Fecha de vencimiento"><input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/></FG>
+            {esLibreta ? (
+              <>
+                <FG label="¿Posee sticker del título vigente?">
+                  <select value={det.posee_sticker ? "si" : "no"} onChange={e=>setDet("posee_sticker", e.target.value==="si")}>
+                    <option value="no">No</option>
+                    <option value="si">Sí</option>
+                  </select>
+                </FG>
+                {det.posee_sticker ? (
+                  <FG label="Vencimiento del sticker"><input type="date" value={det.fecha_sticker||""} onChange={e=>setDet("fecha_sticker",e.target.value)}/></FG>
+                ) : (
+                  <>
+                    <FG label="¿Posee cédula de embarque vigente?">
+                      <select value={det.posee_cedula ? "si" : "no"} onChange={e=>setDet("posee_cedula", e.target.value==="si")}>
+                        <option value="no">No</option>
+                        <option value="si">Sí</option>
+                      </select>
+                    </FG>
+                    {det.posee_cedula && (
+                      <FG label="Vencimiento de la cédula"><input type="date" value={det.fecha_cedula||""} onChange={e=>setDet("fecha_cedula",e.target.value)}/></FG>
+                    )}
+                  </>
+                )}
+                <FG label="¿Está en el Censo Naval?">
+                  <select value={det.censo ? "si" : "no"} onChange={e=>setDet("censo", e.target.value==="si")}>
+                    <option value="no">No</option>
+                    <option value="si">Sí</option>
+                  </select>
+                </FG>
+              </>
+            ) : tipoSel?.tiene_vencimiento ? (
+              <FG label={esActualizacion ? "Fecha de última actualización" : "Fecha de vencimiento"}>
+                <input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/>
+              </FG>
             ) : (
               <FG label="Estado">
                 <select value={form.estado||"vigente"} onChange={e=>set("estado",e.target.value)}>
@@ -580,9 +682,12 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
 }
 
 // ─── MODAL DETALLE EMPLEADO ────────────────────────────────────────────────
-function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocChange, notify }) {
+function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, titulos, onClose, onDocChange, notify }) {
   const [showDoc, setShowDoc] = useState(null);
+  const [showTitulo, setShowTitulo] = useState(null);
   const docsEmp = documentos.filter(d => d.empleado_id === empleado.id);
+  const oficial = esOficial(empleado);
+  const titulosEmp = (titulos||[]).filter(t => t.empleado_id === empleado.id);
 
   const handleDeleteDoc = async (id) => {
     if (!confirm("¿Eliminar este documento?")) return;
@@ -590,11 +695,19 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
     catch(e) { notify("Error: " + e.message); }
   };
 
-  // Armar checklist completo
-  const checklist = tiposDoc.map(t => {
-    const doc = docsEmp.find(d => d.tipo_documento_id === t.id);
-    return { tipo: t, doc };
-  });
+  const handleDeleteTitulo = async (id) => {
+    if (!confirm("¿Eliminar este título?")) return;
+    try { await api.deleteTitulo(id); onDocChange(); notify("Título eliminado"); }
+    catch(e) { notify("Error: " + e.message); }
+  };
+
+  // Armar checklist completo — a Marinería no se le pide lo que es solo de Oficialidad (COC, STCW Oficialidad).
+  const checklist = tiposDoc
+    .filter(t => !t.solo_oficialidad || oficial)
+    .map(t => {
+      const doc = docsEmp.find(d => d.tipo_documento_id === t.id);
+      return { tipo: t, doc };
+    });
 
   const total = checklist.length;
   const ok = checklist.filter(c => !["vencido","sin_cargar","sin_fecha"].includes(estadoEfectivo(c.doc, c.tipo))).length;
@@ -605,11 +718,47 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
         <div className="mhdr">
           <div>
             <div className="mtitle">{empleado.apellido_nombre}</div>
-            <div className="msub">{empleado.categoria} · {empleado.tipo} · DNI {empleado.dni} · Libreta {empleado.libreta}</div>
+            <div className="msub">{catsLabel(empleado)} · {empleado.tipo} · DNI {empleado.dni} · Libreta {empleado.libreta}</div>
           </div>
           <button className="mclose" onClick={onClose}>✕</button>
         </div>
         <div className="mbody">
+          <div className="flex-between" style={{marginBottom:8}}>
+            <div className="card-title" style={{padding:0}}>Títulos {oficial ? "" : "(Marinería: solo uno)"}</div>
+            <button className="btn btn-ghost btn-sm" disabled={!oficial && titulosEmp.length>=1}
+              title={!oficial && titulosEmp.length>=1 ? "Marinería solo puede tener un título" : ""}
+              onClick={()=>setShowTitulo({empleado_id:empleado.id})}>
+              <Ico d={ICONS.plus} size={14}/>Agregar título
+            </button>
+          </div>
+          {titulosEmp.length===0 ? (
+            <div className="info-box" style={{marginBottom:16}}>Sin títulos cargados.</div>
+          ) : (
+            <div className="table-wrap" style={{marginBottom:16}}>
+              <table>
+                <thead><tr><th>Título</th><th>Certificado</th><th>Emitido</th><th>Expira</th><th>Regla</th><th>Limitaciones</th><th></th></tr></thead>
+                <tbody>
+                  {titulosEmp.map(t=>(
+                    <tr key={t.id}>
+                      <td style={{fontWeight:500}}>{t.nombre_titulo}</td>
+                      <td className="text-muted">{t.certificado||"—"}</td>
+                      <td className="text-mono">{fmtDate(t.fecha_emitido)}</td>
+                      <td className="text-mono">{t.fecha_expira ? <DiasChip fechaStr={t.fecha_expira}/> : "—"}</td>
+                      <td className="text-muted">{t.regla||"—"}</td>
+                      <td className="text-muted">{t.limitaciones||"—"}</td>
+                      <td>
+                        <div className="row-actions">
+                          <button className="icon-btn" title="Editar título" onClick={()=>setShowTitulo(t)}><Ico d={ICONS.pencil} size={15}/></button>
+                          <button className="icon-btn danger" title="Eliminar título" onClick={()=>handleDeleteTitulo(t.id)}><Ico d={ICONS.trash} size={15}/></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div className="flex-between" style={{marginBottom:16}}>
             <div style={{fontSize:14,color:"var(--muted)"}}>
               Documentos cargados: <strong className="text-mono" style={{color:"var(--navy)"}}>{ok}/{total}</strong>
@@ -638,6 +787,8 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
                         est === "critico" ? <span className="badge b-crit">Crítico</span> :
                         est === "proximo" ? <span className="badge b-amber">A vencer</span> :
                         est === "ok" ? <span className="badge b-green">Vigente</span> :
+                        est === "desactualizado" ? <span className="badge b-red">Desactualizado</span> :
+                        est === "actualizado" ? <span className="badge b-green">Actualizado</span> :
                         est === "no_aplica" ? <span className="badge b-gray">No aplica</span> :
                         <span className="badge b-green">Vigente</span>
                       ); })()}
@@ -676,6 +827,61 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
           notify={notify}
         />
       )}
+      {showTitulo !== null && (
+        <ModalTitulo
+          titulo={showTitulo?.id ? showTitulo : null}
+          empleadoId={empleado.id}
+          onClose={()=>setShowTitulo(null)}
+          onSave={()=>{ onDocChange(); setShowTitulo(null); notify("Título guardado"); }}
+          notify={notify}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── MODAL TÍTULO ──────────────────────────────────────────────────────────
+function ModalTitulo({ titulo, empleadoId, onClose, onSave, notify }) {
+  const [form, setForm] = useState(titulo || { empleado_id: empleadoId, nombre_titulo:"", certificado:"", fecha_emitido:"", fecha_expira:"", regla:"", limitaciones:"" });
+  const [saving, setSaving] = useState(false);
+  const set = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const handleSave = async () => {
+    if (!form.nombre_titulo.trim()) { notify("Ingresá el nombre del título"); return; }
+    setSaving(true);
+    try {
+      await api.upsertTitulo({
+        ...form,
+        fecha_emitido: form.fecha_emitido || null,
+        fecha_expira: form.fecha_expira || null,
+      });
+      onSave(); onClose();
+    } catch(e) { notify("Error: " + e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="overlay">
+      <div className="modal">
+        <div className="mhdr">
+          <div className="mtitle">{titulo?.id ? "Editar título" : "Agregar título"}</div>
+          <button className="mclose" onClick={onClose}>✕</button>
+        </div>
+        <div className="mbody">
+          <div className="form-single">
+            <FG label="Título *"><input value={form.nombre_titulo} onChange={e=>set("nombre_titulo",e.target.value)} placeholder="Ej: Capitán de Ultramar"/></FG>
+            <FG label="N° de certificado"><input value={form.certificado||""} onChange={e=>set("certificado",e.target.value)}/></FG>
+            <FG label="Fecha de emisión"><input type="date" value={form.fecha_emitido||""} onChange={e=>set("fecha_emitido",e.target.value)}/></FG>
+            <FG label="Fecha de expiración"><input type="date" value={form.fecha_expira||""} onChange={e=>set("fecha_expira",e.target.value)}/></FG>
+            <FG label="Regla"><input value={form.regla||""} onChange={e=>set("regla",e.target.value)} placeholder='Ej: II/2 A II/1 y 2'/></FG>
+            <FG label="Limitaciones"><input value={form.limitaciones||""} onChange={e=>set("limitaciones",e.target.value)} placeholder="Ej: NONE"/></FG>
+          </div>
+        </div>
+        <div className="mftr">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"Guardar"}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -742,7 +948,7 @@ function ModalEntregaEPP({ empleado, eppTipos, talles, onClose, onSave, notify }
               </div>
 
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px 24px",marginBottom:20}}>
-                {[["Nombre",empleado.apellido_nombre],["DNI",empleado.dni],["Categoría",empleado.categoria],["Fecha",new Date().toLocaleDateString("es-AR")]].map(([k,v])=>(
+                {[["Nombre",empleado.apellido_nombre],["DNI",empleado.dni],["Categoría",catsLabel(empleado)],["Fecha",new Date().toLocaleDateString("es-AR")]].map(([k,v])=>(
                   <div key={k}>
                     <div className="text-mono" style={{fontSize:11,color:"var(--muted)",letterSpacing:".08em",textTransform:"uppercase"}}>{k}</div>
                     <div style={{fontSize:14}}>{v || "—"}</div>
@@ -807,7 +1013,7 @@ function ModalEntregaEPP({ empleado, eppTipos, talles, onClose, onSave, notify }
         <div className="mhdr">
           <div>
             <div className="mtitle">Nueva entrega de EPP</div>
-            <div className="msub">{empleado.apellido_nombre} · {empleado.categoria}</div>
+            <div className="msub">{empleado.apellido_nombre} · {catsLabel(empleado)}</div>
           </div>
           <button className="mclose" onClick={onClose}>✕</button>
         </div>
@@ -860,11 +1066,11 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
 
   const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
   const tiposDocFiltrados = tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento) : tiposConVto;
-  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo).map(e=>e.categoria).filter(Boolean))].sort();
+  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo).flatMap(catsOf))].sort();
 
   const empleadosFiltrados = empleados.filter(e=>e.activo &&
     (!tipoPersona || e.tipo===tipoPersona) &&
-    (!puesto || e.categoria===puesto)
+    (!puesto || catsOf(e).includes(puesto))
   );
 
   const filas = [];
@@ -931,7 +1137,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
                   <tr key={i}>
                     <td style={{fontWeight:500,paddingLeft:24}}>{f.emp.apellido_nombre}</td>
                     <td><span className={`badge ${f.emp.tipo==="efectivo"?"b-blue":"b-gray"}`}>{f.emp.tipo}</span></td>
-                    <td className="text-muted">{f.emp.categoria}</td>
+                    <td className="text-muted">{catsLabel(f.emp)}</td>
                     <td>{f.tipoDoc?.nombre || "Sin documentación cargada"}</td>
                     <td className="text-mono">{f.doc ? fmtDate(f.doc.fecha_vto) : "—"}</td>
                     <td>
@@ -958,18 +1164,18 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
 }
 
 // ─── PAGE: EMPLEADOS (efectivos o relevos) ─────────────────────────────────
-function PageEmpleados({ tipo, empleados, documentos, tiposDoc, onReload, notify }) {
+function PageEmpleados({ tipo, empleados, documentos, tiposDoc, titulos, onReload, notify }) {
   const [filtro, setFiltro] = useState("");
   const [puesto, setPuesto] = useState("");
   const [modalEmp, setModalEmp] = useState(null);
   const [detalle, setDetalle] = useState(null);
 
-  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo&&e.tipo===tipo).map(e=>e.categoria).filter(Boolean))];
+  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo&&e.tipo===tipo).flatMap(catsOf))];
 
   const lista = empleados.filter(e=>e.activo&&e.tipo===tipo&&
-    (!puesto || e.categoria===puesto) &&
+    (!puesto || catsOf(e).includes(puesto)) &&
     (!filtro || e.apellido_nombre.toLowerCase().includes(filtro.toLowerCase()) ||
-    (e.categoria||"").toLowerCase().includes(filtro.toLowerCase()))
+    catsLabel(e).toLowerCase().includes(filtro.toLowerCase()))
   );
 
   const getPct = (emp) => {
@@ -1014,7 +1220,7 @@ function PageEmpleados({ tipo, empleados, documentos, tiposDoc, onReload, notify
                 return (
                   <tr key={emp.id}>
                     <td style={{fontWeight:500,paddingLeft:24}}>{emp.apellido_nombre}</td>
-                    <td className="text-muted">{emp.categoria}</td>
+                    <td className="text-muted">{catsLabel(emp)}</td>
                     <td className="text-mono">{emp.dni}</td>
                     <td className="text-mono">{emp.libreta}</td>
                     <td>
@@ -1051,6 +1257,7 @@ function PageEmpleados({ tipo, empleados, documentos, tiposDoc, onReload, notify
           empleado={detalle}
           tiposDoc={tiposDoc}
           documentos={documentos}
+          titulos={titulos}
           onClose={()=>setDetalle(null)}
           onDocChange={onReload}
           notify={notify}
@@ -1187,7 +1394,7 @@ function PageEntregasEPP({ empleados, eppTipos, talles, onReload, notify }) {
                   <button key={emp.id} className="ni" style={{border:"1px solid var(--border)",borderRadius:4,padding:"12px 14px",background:"var(--surface)"}}
                     onClick={()=>setModalEntrega(emp)}>
                     <span className="ni-label" style={{color:"var(--navy)",fontWeight:500}}>{emp.apellido_nombre}</span>
-                    <span className="text-mono" style={{fontSize:11,color:"var(--muted)",letterSpacing:".06em",textTransform:"uppercase"}}>{emp.categoria} · {emp.tipo}</span>
+                    <span className="text-mono" style={{fontSize:11,color:"var(--muted)",letterSpacing:".06em",textTransform:"uppercase"}}>{catsLabel(emp)} · {emp.tipo}</span>
                   </button>
                 ))}
               </div>
@@ -1335,7 +1542,7 @@ function ModalAsignar({ proyecto, empleadosDisponibles, onClose, onSave, notify 
             <FG label="Tripulante *">
               <select value={empleadoId} onChange={e=>setEmpleadoId(e.target.value)}>
                 <option value="">Seleccionar...</option>
-                {empleadosDisponibles.map(e=><option key={e.id} value={e.id}>{e.apellido_nombre} — {e.categoria} ({e.tipo})</option>)}
+                {empleadosDisponibles.map(e=><option key={e.id} value={e.id}>{e.apellido_nombre} — {catsLabel(e)} ({e.tipo})</option>)}
               </select>
             </FG>
             <FG label="Fecha de embarque"><input type="date" value={fechaDesde} onChange={e=>setFechaDesde(e.target.value)}/></FG>
@@ -1528,7 +1735,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                         return (
                           <tr key={asign.id}>
                             <td style={{fontWeight:500,paddingLeft:24}}>{emp.apellido_nombre}{bajo && <span className="text-muted" style={{fontSize:11}}> (bajó {fmtDate(asign.fecha_hasta)})</span>}</td>
-                            <td className="text-muted">{emp.categoria}</td>
+                            <td className="text-muted">{catsLabel(emp)}</td>
                             <td className="text-mono">{fmtDate(asign.fecha_desde)}</td>
                             <td className="text-mono">{doc?.fecha_vto ? fmtDate(doc.fecha_vto) : "—"}</td>
                             <td>{doc ? (doc.fecha_vto ? <DiasChip fechaStr={doc.fecha_vto}/> : <span className="badge b-green">Vigente</span>) : <span className="badge b-red">Sin cargar</span>}</td>
@@ -1552,7 +1759,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                       return (
                         <tr key={asign.id}>
                           <td style={{fontWeight:500,paddingLeft:24}}>{emp.apellido_nombre}{bajo && <span className="text-muted" style={{fontSize:11}}> (bajó {fmtDate(asign.fecha_hasta)})</span>}</td>
-                          <td className="text-muted">{emp.categoria}</td>
+                          <td className="text-muted">{catsLabel(emp)}</td>
                           <td className="text-mono">{fmtDate(asign.fecha_desde)}</td>
                           <td>
                             <div className="flex-gap">
@@ -1621,12 +1828,12 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
   const [docsSel, setDocsSel] = useState([]);
   const [zipping, setZipping] = useState(false);
 
-  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo).map(e=>e.categoria).filter(Boolean))].sort();
+  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo).flatMap(catsOf))].sort();
   const proyectoActivo = buque ? proyectos.find(p=>p.buque===buque && p.activo) : null;
 
   let base = empleados.filter(e=>e.activo &&
     (!tipoPersona || e.tipo===tipoPersona) &&
-    (!puesto || e.categoria===puesto)
+    (!puesto || catsOf(e).includes(puesto))
   );
   if (buque) {
     if (!proyectoActivo) base = [];
@@ -1750,7 +1957,7 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
                   {filas.map(f=>(
                     <tr key={f.emp.id}>
                       <td style={{fontWeight:500,paddingLeft:24}}>{f.emp.apellido_nombre}</td>
-                      <td className="text-muted">{f.emp.categoria}</td>
+                      <td className="text-muted">{catsLabel(f.emp)}</td>
                       {f.celdas.map((c,i)=>(
                         <td key={i}>
                           {!c.doc || !c.doc.archivo_url ? <span className="badge b-red">Sin cargar</span>
@@ -1892,6 +2099,7 @@ export default function App() {
   const [talles, setTalles] = useState([]);
   const [proyectos, setProyectos] = useState([]);
   const [asignaciones, setAsignaciones] = useState([]);
+  const [titulos, setTitulos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notif, setNotif] = useState(null);
   const [detalleExterno, setDetalleExterno] = useState(null);
@@ -1917,12 +2125,12 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [emps, docs, tipos, eppT, tall, proys, asigs] = await Promise.all([
+      const [emps, docs, tipos, eppT, tall, proys, asigs, tits] = await Promise.all([
         api.getEmpleados(), api.getDocumentos(), api.getTiposDoc(),
-        api.getEppTipos(), api.getTalles(), api.getProyectos(), api.getAsignaciones(),
+        api.getEppTipos(), api.getTalles(), api.getProyectos(), api.getAsignaciones(), api.getTitulos(),
       ]);
       setEmpleados(emps); setDocumentos(docs); setTiposDoc(tipos);
-      setEppTipos(eppT); setTalles(tall); setProyectos(proys); setAsignaciones(asigs);
+      setEppTipos(eppT); setTalles(tall); setProyectos(proys); setAsignaciones(asigs); setTitulos(tits);
     } catch(e) { notify("Error cargando datos: "+e.message); }
     finally { setLoading(false); }
   }, [notify]);
@@ -2069,12 +2277,12 @@ export default function App() {
             )}
             {page==="efectivos" && (
               <PageEmpleados tipo="efectivo" empleados={empleados} documentos={documentos}
-                tiposDoc={tiposDoc} onReload={loadAll} notify={notify}
+                tiposDoc={tiposDoc} titulos={titulos} onReload={loadAll} notify={notify}
               />
             )}
             {page==="relevos" && (
               <PageEmpleados tipo="relevo" empleados={empleados} documentos={documentos}
-                tiposDoc={tiposDoc} onReload={loadAll} notify={notify}
+                tiposDoc={tiposDoc} titulos={titulos} onReload={loadAll} notify={notify}
               />
             )}
             {page==="epp_talles" && (
@@ -2132,6 +2340,7 @@ export default function App() {
           empleado={detalleExterno}
           tiposDoc={tiposDoc}
           documentos={documentos}
+          titulos={titulos}
           onClose={()=>setDetalleExterno(null)}
           onDocChange={loadAll}
           notify={notify}
