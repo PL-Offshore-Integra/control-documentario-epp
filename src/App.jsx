@@ -48,6 +48,20 @@ function catsOf(emp) {
 }
 function catsLabel(emp) { const c = catsOf(emp); return c.length ? c.join(" · ") : "—"; }
 function esOficial(emp) { return catsOf(emp).some(c => JERARQUIA[c] && JERARQUIA[c] !== "marineria"); }
+// Devuelve los nombres de los documentos vencidos (o desactualizados, caso COC)
+// de un tripulante, solo entre los tipos que le aplican (respeta solo_oficialidad).
+// Se usa para advertir antes de embarcarlo a un buque.
+function documentosVencidos(emp, documentos, tiposDoc) {
+  const oficial = esOficial(emp);
+  return tiposDoc
+    .filter(t => t.tiene_vencimiento && (!t.solo_oficialidad || oficial))
+    .filter(t => {
+      const doc = documentos.find(d => d.empleado_id === emp.id && d.tipo_documento_id === t.id);
+      const est = estadoEfectivo(doc, t);
+      return est === "vencido" || est === "desactualizado";
+    })
+    .map(t => t.nombre);
+}
 
 // ─── API ───────────────────────────────────────────────────────────────────
 const api = {
@@ -295,6 +309,7 @@ tr.falta td{background:#FDF6F5}
 /* ── BADGES ──────────────────────────────────────────────────────────────── */
 .badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
 .b-red{background:#FAEAE8;color:#B3261E}
+.warning-box{background:#FAEAE8;color:#B3261E;border:1px solid #E8B4AE;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.4;margin:-4px 0 4px}
 .b-crit{background:#FBEDE4;color:#9A3F16}
 .b-amber{background:#FBF1E3;color:#8F5A0B}
 .b-green{background:#E8F3EF;color:#0E7A5F}
@@ -1515,10 +1530,13 @@ function PageProyeccionCompras({ empleados, eppTipos, talles }) {
 }
 
 // ─── MODAL ASIGNAR TRIPULANTE A PROYECTO ───────────────────────────────────
-function ModalAsignar({ proyecto, empleadosDisponibles, onClose, onSave, notify }) {
+function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, onClose, onSave, notify }) {
   const [empleadoId, setEmpleadoId] = useState("");
   const [fechaDesde, setFechaDesde] = useState(fechaHoy());
   const [saving, setSaving] = useState(false);
+
+  const empleadoSel = empleadosDisponibles.find(e=>e.id===empleadoId);
+  const vencidosSel = empleadoSel ? documentosVencidos(empleadoSel, documentos, tiposDoc) : [];
 
   const handleSave = async () => {
     if (!empleadoId) { notify("Elegí un tripulante"); return; }
@@ -1545,9 +1563,17 @@ function ModalAsignar({ proyecto, empleadosDisponibles, onClose, onSave, notify 
             <FG label="Tripulante *">
               <select value={empleadoId} onChange={e=>setEmpleadoId(e.target.value)}>
                 <option value="">Seleccionar...</option>
-                {empleadosDisponibles.map(e=><option key={e.id} value={e.id}>{e.apellido_nombre} — {catsLabel(e)} ({e.tipo})</option>)}
+                {empleadosDisponibles.map(e=>{
+                  const venc = documentosVencidos(e, documentos, tiposDoc);
+                  return <option key={e.id} value={e.id}>{venc.length ? "⚠ " : ""}{e.apellido_nombre} — {catsLabel(e)} ({e.tipo}){venc.length ? " · documentación vencida" : ""}</option>;
+                })}
               </select>
             </FG>
+            {vencidosSel.length > 0 && (
+              <div className="warning-box">
+                ⚠ {empleadoSel.apellido_nombre} tiene documentación vencida: {vencidosSel.join(", ")}. Revisá antes de embarcarlo.
+              </div>
+            )}
             <FG label="Fecha de embarque"><input type="date" value={fechaDesde} onChange={e=>setFechaDesde(e.target.value)}/></FG>
           </div>
         </div>
@@ -1791,6 +1817,8 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
         <ModalAsignar
           proyecto={proyectoActivo}
           empleadosDisponibles={empleadosDisponibles}
+          documentos={documentos}
+          tiposDoc={tiposDoc}
           onClose={()=>setModalAsignar(false)}
           onSave={()=>{ onReload(); notify("Tripulante embarcado"); }}
           notify={notify}
