@@ -297,9 +297,11 @@ tr.falta td{background:#FDF6F5}
 .filter-input:focus,.filter-select:focus{border-width:2px;border-color:var(--action);padding:0 9px}
 .filter-spacer{margin-left:auto}
 .proyecto-tag{display:flex;align-items:center;height:36px;padding:0 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);font-size:14px;color:var(--navy);font-weight:500;white-space:nowrap}
-.checklist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 16px;margin-top:4px}
-.checklist-item{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text)}
-.checklist-item input{width:16px;height:16px}
+.puestos-grupos{display:flex;flex-direction:column;gap:14px;margin-top:6px}
+.puestos-grupo-titulo{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;font-weight:600;margin-bottom:6px}
+.checklist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 16px}
+.fg .checklist-item{display:flex;align-items:center;gap:8px;font-family:var(--sans);font-size:14px;font-weight:400;letter-spacing:normal;text-transform:none;color:var(--text)}
+.checklist-item input{width:16px;height:16px;flex:none}
 
 /* ── BADGES ──────────────────────────────────────────────────────────────── */
 .badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
@@ -484,6 +486,13 @@ const CATEGORIAS = [
   "Jefe de Máquinas","Maquinista Naval de 1ra","Jefe Conductor","Conductor de Máquinas Navales de 1ra","Oficial de la Guardia de Máquinas",
   "Auxiliar de Máquinas","1er Cabo","Cocinero","Marinero","Contramaestre","Enfermero","Mozo",
 ];
+// Agrupa los puestos por jerarquía, en el mismo orden en que aparecen en CATEGORIAS,
+// para mostrarlos ordenados en el formulario en vez de todos mezclados.
+const GRUPOS_PUESTO = [
+  { key:"oficial_cubierta", titulo:"Oficial de Cubierta" },
+  { key:"oficial_maquina", titulo:"Oficial de Máquina" },
+  { key:"marineria", titulo:"Marinería" },
+].map(g => ({ ...g, puestos: CATEGORIAS.filter(c => JERARQUIA[c] === g.key) }));
 
 // ─── BUQUES ────────────────────────────────────────────────────────────────
 // Igual que CATEGORIAS: lista fija en código, no tabla aparte, porque son solo dos.
@@ -552,12 +561,19 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
             </FG>
           </div>
           <FG label={`Puestos * (puede tener más de uno${categoriasSel.length?` — ${categoriasSel.length} elegido${categoriasSel.length===1?"":"s"}`:""})`}>
-            <div className="checklist-grid">
-              {CATEGORIAS.map(c=>(
-                <label key={c} className="checklist-item">
-                  <input type="checkbox" checked={categoriasSel.includes(c)} onChange={()=>togglePuesto(c)}/>
-                  <span>{c}</span>
-                </label>
+            <div className="puestos-grupos">
+              {GRUPOS_PUESTO.map(g=>(
+                <div key={g.key} className="puestos-grupo">
+                  <div className="puestos-grupo-titulo">{g.titulo}</div>
+                  <div className="checklist-grid">
+                    {g.puestos.map(c=>(
+                      <label key={c} className="checklist-item">
+                        <input type="checkbox" checked={categoriasSel.includes(c)} onChange={()=>togglePuesto(c)}/>
+                        <span>{c}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </FG>
