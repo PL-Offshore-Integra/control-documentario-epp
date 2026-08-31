@@ -38,6 +38,11 @@ function estadoEfectivo(doc, tipo) {
     if (!doc.fecha_vto) return "sin_fecha";
     return getAlertColor(diasHasta(doc.fecha_vto)); // vencido | critico | proximo | ok
   }
+  if (modo === "registro") {
+    // Solo se registra una fecha (ej. fecha de aplicación de una vacuna), sin
+    // que "venza" ni se desactualice — no genera alertas por antigüedad.
+    return doc.fecha_vto ? "vigente" : "sin_fecha";
+  }
   return doc.estado === "no_aplica" ? "no_aplica" : "vigente";
 }
 // catsOf soporta datos viejos que todavía tengan un solo "categoria" en vez de "categorias".
@@ -788,7 +793,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
                   <tr key={tipo.id} className={!doc ? "falta" : ""}>
                     <td className="text-mono">{tipo.codigo}</td>
                     <td style={{fontWeight:500}}>{tipo.nombre}{doc?.detalle?.titulo_elegido ? ` — ${doc.detalle.titulo_elegido}` : ""}</td>
-                    <td>{doc?.fecha_vto ? <DiasChip fechaStr={doc.fecha_vto}/> : <span className="badge b-gray">—</span>}</td>
+                    <td>{doc?.fecha_vto ? ((tipo.modo==="actualizacion"||tipo.modo==="registro") ? <span className="text-mono">{fmtDate(doc.fecha_vto)}</span> : <DiasChip fechaStr={doc.fecha_vto}/>) : <span className="badge b-gray">—</span>}</td>
                     <td>
                       {(() => { const est = estadoEfectivo(doc, tipo); return (
                         est === "sin_cargar" ? <span className="badge b-red">Sin cargar</span> :
@@ -1071,12 +1076,14 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
     }
     tiposDocFiltrados.forEach(t => {
       const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
-      if (!doc) { filas.push({ emp, tipoDoc: t, doc: null, nivel: "sin_doc" }); return; }
-      if (!doc.fecha_vto) return;
-      const dias = diasHasta(doc.fecha_vto);
-      const color = getAlertColor(dias);
-      if (color === "vencido" || color === "critico" || color === "proximo") {
-        filas.push({ emp, tipoDoc: t, doc, nivel: color, dias: dias });
+      const est = estadoEfectivo(doc, t);
+      if (est === "sin_cargar") { filas.push({ emp, tipoDoc: t, doc: null, nivel: "sin_doc" }); return; }
+      if (est === "sin_fecha") return;
+      const dias = doc.fecha_vto ? diasHasta(doc.fecha_vto) : null;
+      if (est === "vencido" || est === "critico" || est === "proximo") {
+        filas.push({ emp, tipoDoc: t, doc, nivel: est, dias });
+      } else if (est === "desactualizado") {
+        filas.push({ emp, tipoDoc: t, doc, nivel: "desactualizado", dias });
       }
     });
     // Sin ningún documento cargado: solo aplica si no se filtró por un tipo de documento puntual.
@@ -1085,13 +1092,15 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
       if (docsEmp.length === 0) filas.push({ emp, tipoDoc: null, doc: null, nivel: "sin_doc" });
     }
   });
-  filas.sort((a,b)=>{const o={vencido:0,sin_doc:1,critico:2,proximo:3};return o[a.nivel]-o[b.nivel];});
+  filas.sort((a,b)=>{const o={vencido:0,desactualizado:0,sin_doc:1,critico:2,proximo:3};return (o[a.nivel]??4)-(o[b.nivel]??4);});
 
-  const vencidos = filas.filter(f=>f.nivel==="vencido").length;
+  const vencidos = filas.filter(f=>f.nivel==="vencido"||f.nivel==="desactualizado").length;
   const criticos = filas.filter(f=>f.nivel==="critico").length;
   const proximos = filas.filter(f=>f.nivel==="proximo").length;
   const sinDoc   = filas.filter(f=>f.nivel==="sin_doc").length;
-  const filasVisibles = nivelFiltro ? filas.filter(f=>f.nivel===nivelFiltro) : filas;
+  const filasVisibles = nivelFiltro
+    ? filas.filter(f => nivelFiltro==="vencido" ? (f.nivel==="vencido"||f.nivel==="desactualizado") : f.nivel===nivelFiltro)
+    : filas;
 
   return (
     <div>
@@ -1161,6 +1170,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
                       {f.nivel==="rol_asignado" && <span className="badge b-gray">Solo rol asignado</span>}
                       {!f.doc && f.nivel!=="rol_asignado" && <span className="badge b-red">Sin cargar</span>}
                       {f.nivel==="vencido" && <span className="badge b-red">Vencido {Math.abs(diasHasta(f.doc.fecha_vto))}d</span>}
+                      {f.nivel==="desactualizado" && <span className="badge b-red">Desactualizado</span>}
                       {f.nivel==="critico" && <span className="badge b-crit">Crítico {diasHasta(f.doc.fecha_vto)}d</span>}
                       {f.nivel==="proximo" && <span className="badge b-amber">A vencer {diasHasta(f.doc.fecha_vto)}d</span>}
                       {f.nivel==="ok" && <span className="badge b-green">Vigente {diasHasta(f.doc.fecha_vto)}d</span>}
@@ -1767,7 +1777,16 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                             <td className="text-muted">{catsLabel(emp)}</td>
                             <td className="text-mono">{fmtDate(asign.fecha_desde)}</td>
                             <td className="text-mono">{doc?.fecha_vto ? fmtDate(doc.fecha_vto) : "—"}</td>
-                            <td>{doc ? (doc.fecha_vto ? <DiasChip fechaStr={doc.fecha_vto}/> : <span className="badge b-green">Vigente</span>) : <span className="badge b-red">Sin cargar</span>}</td>
+                            <td>{(() => { const est = estadoEfectivo(doc, t); return (
+                              est === "sin_cargar" ? <span className="badge b-red">Sin cargar</span> :
+                              est === "sin_fecha" ? <span className="badge b-amber">Sin fecha cargada</span> :
+                              est === "vencido" ? <DiasChip fechaStr={doc.fecha_vto}/> :
+                              est === "critico" ? <DiasChip fechaStr={doc.fecha_vto}/> :
+                              est === "proximo" ? <DiasChip fechaStr={doc.fecha_vto}/> :
+                              est === "desactualizado" ? <span className="badge b-red">Desactualizado</span> :
+                              est === "actualizado" ? <span className="badge b-green">Actualizado</span> :
+                              <span className="badge b-green">Vigente</span>
+                            ); })()}</td>
                             <td style={{paddingRight:24}}>
                               <div className="row-actions">
                                 <button className="btn btn-sm btn-ghost" onClick={()=>onVerEmpleado(emp)}>Ver legajo</button>
@@ -1781,7 +1800,8 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                       const total = tiposConVto.length;
                       const ok = tiposConVto.filter(t=>{
                         const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
-                        return doc && getAlertColor(diasHasta(doc.fecha_vto))!=="vencido";
+                        const est = estadoEfectivo(doc, t);
+                        return !["vencido","desactualizado","sin_cargar","sin_fecha"].includes(est);
                       }).length;
                       const pct = total>0?Math.round(ok/total*100):0;
                       const color = pct===100?"var(--accent2)":pct>=70?"var(--warn)":"var(--danger)";
@@ -1887,7 +1907,7 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
   let problemas = 0;
   filas.forEach(f => f.celdas.forEach(c => {
     if (!c.doc || !c.doc.archivo_url) problemas++;
-    else if (c.doc.fecha_vto && getAlertColor(diasHasta(c.doc.fecha_vto))==="vencido") problemas++;
+    else { const est = estadoEfectivo(c.doc, c.tipoDoc); if (est==="vencido"||est==="desactualizado") problemas++; }
   }));
 
   const handleDescargarZip = async () => {
