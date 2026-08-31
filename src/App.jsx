@@ -546,7 +546,7 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
   const handleSave = async () => {
     if (!form.apellido.trim()) { notify("Ingresá el apellido"); return; }
     if (!form.nombre.trim()) { notify("Ingresá el nombre"); return; }
-    if (categoriasSel.length === 0) { notify("Elegí el puesto"); return; }
+    if (categoriasSel.length === 0) { notify("Elegí el rol de embarque"); return; }
     setSaving(true);
     try {
       const { apellido, nombre, ...resto } = form;
@@ -577,7 +577,7 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
                 <option value="relevo">Relevo</option>
               </select>
             </FG>
-            <FG label="Puesto *">
+            <FG label="Rol de embarque *">
               <select value={puestoUnico} onChange={e=>setPuesto(e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {GRUPOS_PUESTO.map(g=>(
@@ -888,7 +888,7 @@ function ModalEntregaEPP({ empleado, eppTipos, talles, onClose, onSave, notify }
               </div>
 
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px 24px",marginBottom:20}}>
-                {[["Nombre",empleado.apellido_nombre],["DNI",empleado.dni],["Categoría",catsLabel(empleado)],["Fecha",new Date().toLocaleDateString("es-AR")]].map(([k,v])=>(
+                {[["Nombre",empleado.apellido_nombre],["DNI",empleado.dni],["Rol de embarque",catsLabel(empleado)],["Fecha",new Date().toLocaleDateString("es-AR")]].map(([k,v])=>(
                   <div key={k}>
                     <div className="text-mono" style={{fontSize:11,color:"var(--muted)",letterSpacing:".08em",textTransform:"uppercase"}}>{k}</div>
                     <div style={{fontSize:14}}>{v || "—"}</div>
@@ -1082,7 +1082,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
           <option value="baja">Base de datos (dados de baja)</option>
         </select>
         <select className="filter-select" value={puesto} onChange={e=>setPuesto(e.target.value)}>
-          <option value="">Todos los puestos</option>
+          <option value="">Todos los roles de embarque</option>
           {puestosDisponibles.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
         <select className="filter-select" value={tipoDocumento} onChange={e=>{setTipoDocumento(e.target.value); setTituloBuscado("");}}>
@@ -1127,7 +1127,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
           <div className="card-title">Alertas de documentación · {filasVisibles.length}</div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th style={{paddingLeft:24}}>Tripulante</th><th>Tipo</th><th>Puesto</th><th>Documento</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead>
+              <thead><tr><th style={{paddingLeft:24}}>Tripulante</th><th>Tipo</th><th>Rol de embarque</th><th>Documento</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead>
               <tbody>
                 {filasVisibles.map((f,i)=>(
                   <tr key={i}>
@@ -1195,7 +1195,7 @@ function PageEmpleados({ tipo, empleados, documentos, tiposDoc, titulos, onReloa
       <div className="filter-row">
         <input className="filter-input" placeholder="Buscar por nombre" value={filtro} onChange={e=>setFiltro(e.target.value)}/>
         <select className="filter-select" value={puesto} onChange={e=>setPuesto(e.target.value)}>
-          <option value="">Todos los puestos</option>
+          <option value="">Todos los roles de embarque</option>
           {puestosDisponibles.sort().map(c=><option key={c} value={c}>{c}</option>)}
         </select>
         <div className="filter-spacer" />
@@ -1207,7 +1207,7 @@ function PageEmpleados({ tipo, empleados, documentos, tiposDoc, titulos, onReloa
         <div className="card-title">{lista.length} {tipo}{lista.length===1?"":"s"} en registro</div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th style={{paddingLeft:24}}>Nombre</th><th>Categoría</th><th>DNI</th><th>Libreta</th><th>Documentación</th><th></th></tr></thead>
+            <thead><tr><th style={{paddingLeft:24}}>Nombre</th><th>Rol de embarque</th><th>DNI</th><th>Libreta</th><th>Documentación</th><th></th></tr></thead>
             <tbody>
               {lista.length===0 && <tr><td colSpan={6} className="empty-state">No hay {tipo}s registrados.</td></tr>}
               {lista.map(emp=>{
@@ -1719,8 +1719,8 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                 <table>
                   <thead>
                     {tipoDocumento
-                      ? <tr><th style={{paddingLeft:24}}>Tripulante</th><th>Puesto</th><th>A bordo desde</th><th>Vencimiento</th><th>Estado</th><th></th></tr>
-                      : <tr><th style={{paddingLeft:24}}>Tripulante</th><th>Puesto</th><th>A bordo desde</th><th>Documentación</th><th></th></tr>}
+                      ? <tr><th style={{paddingLeft:24}}>Tripulante</th><th>Rol de embarque</th><th>A bordo desde</th><th>Vencimiento</th><th>Estado</th><th></th></tr>
+                      : <tr><th style={{paddingLeft:24}}>Tripulante</th><th>Rol de embarque</th><th>A bordo desde</th><th>Documentación</th><th></th></tr>}
                   </thead>
                   <tbody>
                     {rol.map(({asign, emp}) => {
@@ -1902,7 +1902,7 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
           <option value="relevo">Solo relevos</option>
         </select>
         <select className="filter-select" value={puesto} onChange={e=>setPuesto(e.target.value)}>
-          <option value="">Todos los puestos</option>
+          <option value="">Todos los roles de embarque</option>
           {puestosDisponibles.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
       </div>
@@ -1945,7 +1945,7 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
               <table>
                 <thead>
                   <tr>
-                    <th style={{paddingLeft:24}}>Tripulante</th><th>Puesto</th>
+                    <th style={{paddingLeft:24}}>Tripulante</th><th>Rol de embarque</th>
                     {docsSel.map(id=>{ const t=tiposDoc.find(x=>x.id===id); return <th key={id}>{t.nombre}</th>; })}
                   </tr>
                 </thead>
