@@ -607,9 +607,10 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
   const setDet = (k,v) => setForm(p=>({...p, detalle:{...(p.detalle||{}), [k]:v}}));
 
   const tipoSel = tiposDoc.find(t => t.id === form.tipo_documento_id);
-  const esLibreta = (tipoSel?.nombre||"").toLowerCase().includes("libreta");
+  const esLibreta = tipoSel?.nombre === "Libreta de Embarque";
   const esActualizacion = tipoSel?.modo === "actualizacion";
   const esTitulo = /^Título \d/.test(tipoSel?.nombre||"");
+  const esVacuna = tipoSel?.nombre === "COVID" || tipoSel?.nombre === "Fiebre Amarilla";
   const det = form.detalle || {};
 
   const handleSave = async () => {
@@ -690,7 +691,7 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
                 </FG>
               </>
             ) : tipoSel?.tiene_vencimiento ? (
-              <FG label={esActualizacion ? "Fecha de última actualización" : "Fecha de vencimiento"}>
+              <FG label={esActualizacion ? "Fecha de emisión" : esVacuna ? "Fecha del certificado" : "Fecha de vencimiento"}>
                 <input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/>
               </FG>
             ) : (
@@ -1002,6 +1003,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
   const [tipoPersona, setTipoPersona] = useState("");
   const [puesto, setPuesto] = useState("");
   const [tipoDocumento, setTipoDocumento] = useState("");
+  const [nivelFiltro, setNivelFiltro] = useState("");
 
   const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
   const tiposDocFiltrados = tipoDocumento === "__titulo__" ? tiposDoc.filter(t=>/^Título \d/.test(t.nombre))
@@ -1054,6 +1056,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
   const criticos = filas.filter(f=>f.nivel==="critico").length;
   const proximos = filas.filter(f=>f.nivel==="proximo").length;
   const sinDoc   = filas.filter(f=>f.nivel==="sin_doc").length;
+  const filasVisibles = nivelFiltro ? filas.filter(f=>f.nivel===nivelFiltro) : filas;
 
   return (
     <div>
@@ -1082,6 +1085,13 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
             });
           })()}
         </select>
+        <select className="filter-select" value={nivelFiltro} onChange={e=>setNivelFiltro(e.target.value)}>
+          <option value="">Todos los estados</option>
+          <option value="vencido">Solo vencidos</option>
+          <option value="critico">Solo críticos (menos de 30d)</option>
+          <option value="proximo">Solo a vencer (menos de 90d)</option>
+          <option value="sin_doc">Solo sin documentar</option>
+        </select>
       </div>
 
       <div className="stats stats-5">
@@ -1092,16 +1102,16 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
         <div className="stat"><div className="stat-label">Sin documentar</div><div className="stat-value vr">{sinDoc}</div></div>
       </div>
 
-      {filas.length === 0 ? (
+      {filasVisibles.length === 0 ? (
         <div className="card"><div className="empty-state">Toda la documentación está al día.</div></div>
       ) : (
         <div className="card flush">
-          <div className="card-title">Alertas de documentación · {filas.length}</div>
+          <div className="card-title">Alertas de documentación · {filasVisibles.length}</div>
           <div className="table-wrap">
             <table>
               <thead><tr><th style={{paddingLeft:24}}>Tripulante</th><th>Tipo</th><th>Puesto</th><th>Documento</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead>
               <tbody>
-                {filas.map((f,i)=>(
+                {filasVisibles.map((f,i)=>(
                   <tr key={i}>
                     <td style={{fontWeight:500,paddingLeft:24}}>{f.emp.apellido_nombre}</td>
                     <td><span className={`badge ${f.emp.tipo==="efectivo"?"b-blue":"b-gray"}`}>{f.emp.tipo}</span></td>
@@ -2117,14 +2127,14 @@ export default function App() {
       { id:"efectivos", icon:"user", label:"Efectivos", count:empleados.filter(e=>e.activo&&e.tipo==="efectivo").length },
       { id:"relevos",   icon:"swap", label:"Relevos",   count:empleados.filter(e=>e.activo&&e.tipo==="relevo").length },
     ]},
+    { titulo:"Embarque", items:[
+      { id:"rol_buque", icon:"swap", label:"Rol por buque",           count:0 },
+      { id:"presentar", icon:"file", label:"Presentar documentación", count:0 },
+    ]},
     { titulo:"EPP", items:[
       { id:"epp_talles", icon:"vest",  label:"Registro de talles",   count:0 },
       { id:"entregas",   icon:"box",   label:"Entregas de EPP",      count:0 },
       { id:"proyeccion", icon:"chart", label:"Proyección de compras", count:0 },
-    ]},
-    { titulo:"Embarque", items:[
-      { id:"rol_buque", icon:"swap", label:"Rol por buque",           count:0 },
-      { id:"presentar", icon:"file", label:"Presentar documentación", count:0 },
     ]},
   ];
 
