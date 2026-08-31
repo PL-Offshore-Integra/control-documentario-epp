@@ -67,6 +67,24 @@ function documentosVencidos(emp, documentos, tiposDoc) {
     })
     .map(t => t.nombre);
 }
+// "Legajo completo" (código 01 a 11): para oficiales, todos los tipos hasta el
+// código 11 inclusive; para marinería, los mismos MENOS COC (no todos los
+// marineros lo tienen — es el que ya está marcado solo_oficialidad=true).
+// COVID, Fiebre Amarilla y Otros documentos (código 12 en adelante) quedan
+// afuera del cálculo de legajo completo.
+function tiposLegajo(emp, tiposDoc) {
+  const oficial = esOficial(emp);
+  return tiposDoc.filter(t => (parseInt(t.codigo, 10) || 999) <= 11 && (!t.solo_oficialidad || oficial));
+}
+function legajoPct(emp, documentos, tiposDoc) {
+  const aplicables = tiposLegajo(emp, tiposDoc);
+  const ok = aplicables.filter(t => {
+    const doc = documentos.find(d => d.empleado_id === emp.id && d.tipo_documento_id === t.id);
+    const est = estadoEfectivo(doc, t);
+    return !["vencido", "sin_fecha", "sin_cargar", "desactualizado"].includes(est);
+  }).length;
+  return { ok, total: aplicables.length, pct: aplicables.length > 0 ? Math.round(ok / aplicables.length * 100) : 0 };
+}
 
 // ─── API ───────────────────────────────────────────────────────────────────
 const api = {
@@ -760,8 +778,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
       return { tipo: t, doc };
     });
 
-  const total = checklist.length;
-  const ok = checklist.filter(c => !["vencido","sin_cargar","sin_fecha"].includes(estadoEfectivo(c.doc, c.tipo))).length;
+  const { total, ok } = legajoPct(empleado, docsEmp, tiposDoc);
 
   return (
     <div className="overlay">
@@ -1206,15 +1223,7 @@ function PageEmpleados({ tipo, empleados, documentos, tiposDoc, titulos, onReloa
     catsLabel(e).toLowerCase().includes(filtro.toLowerCase()))
   );
 
-  const getPct = (emp) => {
-    const docsEmp = documentos.filter(d=>d.empleado_id===emp.id);
-    const total = tiposDoc.length;
-    const ok = docsEmp.filter(d => {
-      const t = tiposDoc.find(x=>x.id===d.tipo_documento_id);
-      return !["vencido","sin_fecha"].includes(estadoEfectivo(d, t));
-    }).length;
-    return { ok, total, pct: total>0?Math.round(ok/total*100):0 };
-  };
+  const getPct = (emp) => legajoPct(emp, documentos, tiposDoc);
 
   const handleDelete = async (emp) => {
     if (!confirm(`¿Dar de baja a ${emp.apellido_nombre}?`)) return;
@@ -1705,12 +1714,12 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   rol.forEach(({emp}) => {
     tiposDocFiltrados.forEach(t => {
       const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
-      if (!doc) { sinDoc++; return; }
-      if (!doc.fecha_vto) return;
-      const color = getAlertColor(diasHasta(doc.fecha_vto));
-      if (color==="vencido") vencidos++;
-      else if (color==="critico") criticos++;
-      else if (color==="proximo") proximos++;
+      const est = estadoEfectivo(doc, t);
+      if (est==="sin_cargar") { sinDoc++; return; }
+      if (est==="sin_fecha") return;
+      if (est==="vencido"||est==="desactualizado") vencidos++;
+      else if (est==="critico") criticos++;
+      else if (est==="proximo") proximos++;
     });
   });
 
@@ -1797,13 +1806,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                           </tr>
                         );
                       }
-                      const total = tiposConVto.length;
-                      const ok = tiposConVto.filter(t=>{
-                        const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
-                        const est = estadoEfectivo(doc, t);
-                        return !["vencido","desactualizado","sin_cargar","sin_fecha"].includes(est);
-                      }).length;
-                      const pct = total>0?Math.round(ok/total*100):0;
+                      const { total, ok, pct } = legajoPct(emp, documentos, tiposDoc);
                       const color = pct===100?"var(--accent2)":pct>=70?"var(--warn)":"var(--danger)";
                       return (
                         <tr key={asign.id}>
