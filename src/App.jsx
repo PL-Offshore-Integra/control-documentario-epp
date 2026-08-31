@@ -493,10 +493,18 @@ const GRUPOS_PUESTO = [
   { key:"oficial_maquina", titulo:"Oficial de Máquina" },
   { key:"marineria", titulo:"Marinería" },
 ].map(g => ({ ...g, puestos: CATEGORIAS.filter(c => JERARQUIA[c] === g.key) }));
-// Lista fija de títulos posibles (son los mismos nombres que los puestos de
-// Oficialidad), para que se elijan de un desplegable y no se escriban a mano
-// con variantes de texto distintas para lo mismo.
-const TITULOS_POSIBLES = CATEGORIAS.filter(c => JERARQUIA[c] !== "marineria");
+// Lista fija de títulos posibles, para elegir de un desplegable y no escribir
+// a mano con variantes de texto distintas para lo mismo. Aplica a Título 1 y
+// Título 2 por igual — cualquier puesto puede tener más de un título.
+const TITULOS_POSIBLES = [
+  "Capitán de Ultramar","Capitán Fluvial",
+  "1er Oficial de Cubierta de Ultramar","1er Oficial Fluvial",
+  "Oficial de la Guardia de Navegación de Ultramar","Oficial de la Guardia de Navegación Fluvial",
+  "Jefe de Máquinas","Jefe Conductor",
+  "1er Oficial de Máquinas","Conductor Naval de 1ra",
+  "Oficial de la Guardia de Máquinas",
+  "1er Cabo","Auxiliar de Máquinas-Engrasador","Contramaestre","Marinero","Cocinero","Mozo","Enfermero",
+];
 
 // ─── BUQUES ────────────────────────────────────────────────────────────────
 // Igual que CATEGORIAS: lista fija en código, no tabla aparte, porque son solo dos.
@@ -523,16 +531,13 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(p => ({...p,[k]:v}));
   const categoriasSel = Array.isArray(form.categorias) ? form.categorias : (form.categoria ? [form.categoria] : []);
-  const togglePuesto = (c) => setForm(p => {
-    const actuales = Array.isArray(p.categorias) ? p.categorias : (p.categoria ? [p.categoria] : []);
-    const nuevas = actuales.includes(c) ? actuales.filter(x=>x!==c) : [...actuales, c];
-    return { ...p, categorias: nuevas, categoria: null };
-  });
+  const puestoUnico = categoriasSel[0] || "";
+  const setPuesto = (c) => setForm(p => ({ ...p, categorias: c ? [c] : [], categoria: null }));
 
   const handleSave = async () => {
     if (!form.apellido.trim()) { notify("Ingresá el apellido"); return; }
     if (!form.nombre.trim()) { notify("Ingresá el nombre"); return; }
-    if (categoriasSel.length === 0) { notify("Elegí al menos un puesto"); return; }
+    if (categoriasSel.length === 0) { notify("Elegí el puesto"); return; }
     setSaving(true);
     try {
       const { apellido, nombre, ...resto } = form;
@@ -563,24 +568,17 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
                 <option value="relevo">Relevo</option>
               </select>
             </FG>
+            <FG label="Puesto *">
+              <select value={puestoUnico} onChange={e=>setPuesto(e.target.value)}>
+                <option value="">Seleccionar...</option>
+                {GRUPOS_PUESTO.map(g=>(
+                  <optgroup key={g.key} label={g.titulo}>
+                    {g.puestos.map(c=><option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </FG>
           </div>
-          <FG label={`Puestos * (puede tener más de uno${categoriasSel.length?` — ${categoriasSel.length} elegido${categoriasSel.length===1?"":"s"}`:""})`}>
-            <div className="puestos-grupos">
-              {GRUPOS_PUESTO.map(g=>(
-                <div key={g.key} className="puestos-grupo">
-                  <div className="puestos-grupo-titulo">{g.titulo}</div>
-                  <div className="checklist-grid">
-                    {g.puestos.map(c=>(
-                      <label key={c} className="checklist-item">
-                        <input type="checkbox" checked={categoriasSel.includes(c)} onChange={()=>togglePuesto(c)}/>
-                        <span>{c}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </FG>
         </div>
         <div className="mftr">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
@@ -997,11 +995,13 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
   const [tipoDocumento, setTipoDocumento] = useState("");
 
   const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
-  const tiposDocFiltrados = tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento) : tiposConVto;
-  const puestosDisponibles = [...new Set(empleados.filter(e=>e.activo).flatMap(catsOf))].sort();
+  const tiposDocFiltrados = tipoDocumento === "__titulo__" ? tiposDoc.filter(t=>/^Título \d/.test(t.nombre))
+    : tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento)
+    : tiposConVto;
+  const puestosDisponibles = [...new Set(empleados.flatMap(catsOf))].sort();
 
-  const empleadosFiltrados = empleados.filter(e=>e.activo &&
-    (!tipoPersona || e.tipo===tipoPersona) &&
+  const empleadosFiltrados = empleados.filter(e =>
+    (tipoPersona === "baja" ? !e.activo : e.activo && (!tipoPersona || e.tipo===tipoPersona)) &&
     (!puesto || catsOf(e).includes(puesto))
   );
 
@@ -1037,6 +1037,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
           <option value="">Efectivos y relevos</option>
           <option value="efectivo">Solo efectivos</option>
           <option value="relevo">Solo relevos</option>
+          <option value="baja">Base de datos (dados de baja)</option>
         </select>
         <select className="filter-select" value={puesto} onChange={e=>setPuesto(e.target.value)}>
           <option value="">Todos los puestos</option>
@@ -1044,7 +1045,8 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
         </select>
         <select className="filter-select" value={tipoDocumento} onChange={e=>setTipoDocumento(e.target.value)}>
           <option value="">Todos los documentos</option>
-          {tiposDoc.map(t=><option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>)}
+          {tiposDoc.filter(t=>!/^Título \d/.test(t.nombre)).map(t=><option key={t.id} value={t.id}>{t.codigo} — {t.nombre}</option>)}
+          {tiposDoc.some(t=>/^Título \d/.test(t.nombre)) && <option value="__titulo__">Título (1 y 2)</option>}
         </select>
       </div>
 
