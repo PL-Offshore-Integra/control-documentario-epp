@@ -2332,6 +2332,10 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
       base = base.filter(e=>idsRol.has(e.id));
     }
   }
+  // Mismo orden de jerarquía que Rol del Buque y la Crew List, para que la
+  // tabla en pantalla y el ZIP descargado se lean/controlen en el mismo
+  // orden siempre.
+  base = [...base].sort((a,b) => ordenJerarquia(a) - ordenJerarquia(b) || a.apellido_nombre.localeCompare(b.apellido_nombre));
 
   const toggleDoc = (id) => setDocsSel(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
 
