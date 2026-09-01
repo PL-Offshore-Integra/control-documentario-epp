@@ -2428,8 +2428,8 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
       ) : (
         <>
           {problemas > 0 && (
-            <div className="info-box warn" style={{marginBottom:16}}>
-              {problemas} documento{problemas===1?"":"s"} vencido{problemas===1?"":"s"} o sin cargar en esta selección — revisalo antes de presentar.
+            <div className="warning-box" style={{marginBottom:16}}>
+              ⚠ {problemas} documento{problemas===1?"":"s"} vencido{problemas===1?"":"s"} o sin cargar en esta selección — revisalo antes de presentar.
             </div>
           )}
           <div className="card flush">
