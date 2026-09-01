@@ -585,6 +585,102 @@ const ROLES_NAVALES = [
 ];
 const CATEGORIAS = ROLES_NAVALES.map(r => r.nombre);
 const JERARQUIA = Object.fromEntries(ROLES_NAVALES.map(r => [r.nombre, r.jerarquia]));
+
+// ─── ORDEN DE JERARQUÍA PARA LA CREW LIST ─────────────────────────────────
+// Orden confirmado por Vicky (mínima dotación exigida por Prefectura), usado
+// para ordenar la tripulación tanto en pantalla (Rol del Buque) como al
+// imprimir la Crew List — no afecta el orden de asignación/embarque, que es
+// libre. "Of. Fluvial", "Oficial de la Guardia de Navegación", "Enfermero" y
+// "Mozo" no estaban en la lista original que dio Vicky: quedaron ubicados por
+// supuesto propio (marcado abajo) y hay que confirmarlos con ella.
+const ORDEN_ROL_EMBARQUE = [
+  "Capitán Ultramar", "Capitán Fluvial", "Of. Fluvial", // supuesto: Of. Fluvial = nivel 1
+  "Piloto de Ultr. 1ra",
+  "Oficial de la Guardia de Navegación", // supuesto: nivel 3, junto con 2do Oficial de Cubierta
+  "Jefe de Máquinas", "Jefe Conductor",
+  "Maquinista Naval de 1ra", "Conductor de Máquinas Navales de 1ra", // 1er oficial de máquinas
+  "Oficial de la Guardia de Máquinas", // 2do oficial de máquinas
+  "Auxiliar de Máquinas", "1er Cabo",
+  "Cocinero",
+  "Contramaestre",
+  "Marinero",
+  "Enfermero", "Mozo", // supuesto: al final, junto con Marineros
+];
+const ORDEN_ROL_IDX = Object.fromEntries(ORDEN_ROL_EMBARQUE.map((r, i) => [r, i]));
+// Rango (menor = más jerarquía) del mejor rol de embarque que tenga el
+// empleado; si tiene varios roles, se toma el de mayor jerarquía. Sin rol
+// conocido, va al final.
+function ordenJerarquia(emp) {
+  const cats = catsOf(emp);
+  if (!cats.length) return 999;
+  const idxs = cats.map(c => ORDEN_ROL_IDX[c] ?? 999);
+  return Math.min(...idxs);
+}
+
+// ─── DOTACIÓN MÍNIMA DE SEGURIDAD (Prefectura) ────────────────────────────
+// Según el Certificado Nacional de Dotación Mínima de Seguridad N° 20.0022
+// de Atlantic Dama (Marítima Nacional / Ultramar). El Contramaestre cuenta
+// para el cupo de "Marineros" — es un Marinero con título y libreta de
+// Marinero, solo cambia el rol funcional a bordo. Cocinero no forma parte
+// de la dotación exigida (va igual, no se controla). Enfermero no depende
+// de este certificado sino de una regla aparte de Prefectura (obligatorio
+// si tripulantes + pasajeros > 30) — no se controla acá todavía.
+// Certificado N° 10.00653 de Golondrina de Mar (Río de la Plata / Fluvial).
+// A diferencia de Atlantic, acá sí entran Jefe Conductor (además de Jefe de
+// Máquinas) y Conductor de Máquinas Navales de 1ra (además de Maquinista
+// Naval de 1ra) para las jefaturas de máquinas — según lo que confirmaste.
+const DOTACION_MINIMA = {
+  "Atlantic Dama": [
+    { label: "Capitán", puestos: ["Capitán Ultramar"], cantidad: 1 },
+    { label: "1° Of. Cubierta", puestos: ["Piloto de Ultr. 1ra"], cantidad: 1 },
+    { label: "2° Of. Cubierta", puestos: ["Oficial de la Guardia de Navegación"], cantidad: 1 },
+    { label: "Marineros (incl. Contramaestre)", puestos: ["Marinero", "Contramaestre"], cantidad: 4 },
+    { label: "Jefe de Máquinas", puestos: ["Jefe de Máquinas"], cantidad: 1 },
+    { label: "1er Of. de Máquinas", puestos: ["Maquinista Naval de 1ra"], cantidad: 1 },
+    { label: "Auxiliar de Máquinas", puestos: ["Auxiliar de Máquinas"], cantidad: 1 },
+  ],
+  "Golondrina de Mar": [
+    { label: "Capitán/Patrón", puestos: ["Capitán Fluvial"], cantidad: 1 },
+    { label: "1° Of. Fluvial / 2° Patrón", puestos: ["Of. Fluvial"], cantidad: 1 },
+    { label: "Marineros (incl. Contramaestre)", puestos: ["Marinero", "Contramaestre"], cantidad: 2 },
+    { label: "Jefe de Máquinas", puestos: ["Jefe de Máquinas", "Jefe Conductor"], cantidad: 1 },
+    { label: "1er Of. de Máquinas", puestos: ["Maquinista Naval de 1ra", "Conductor de Máquinas Navales de 1ra"], cantidad: 1 },
+    { label: "Auxiliar de Máquinas", puestos: ["Auxiliar de Máquinas"], cantidad: 1 },
+  ],
+};
+// ─── "AL MENOS UNO DE ESTOS PUESTOS TIENE ESTE DOCUMENTO VIGENTE" ──────────
+// Patrón reutilizable para cursos/certificados que no se le exigen a toda
+// la tripulación sino a "al menos un oficial de tal o cual grupo" a bordo.
+// Devuelve null si no hay nadie de esos puestos embarcado (no aplica el
+// chequeo todavía); true/false si aplica y está o no cubierto.
+function algunoTieneVigente(rolActual, documentos, tipoDoc, puestos) {
+  if (!tipoDoc) return null;
+  const candidatos = rolActual.filter(({ emp }) => catsOf(emp).some(c => puestos.includes(c)));
+  if (candidatos.length === 0) return null;
+  return candidatos.some(({ emp }) => {
+    const doc = documentos.find(d => d.empleado_id === emp.id && d.tipo_documento_id === tipoDoc.id);
+    return !["vencido", "sin_fecha", "sin_cargar"].includes(estadoEfectivo(doc, tipoDoc));
+  });
+}
+// Por ahora solo para los puestos de Ultramar que confirmó Vicky — falta
+// confirmar si aplica igual a los equivalentes Fluvial en Golondrina de Mar.
+const PUESTOS_RADIOTELEFONISTA = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "Oficial de la Guardia de Navegación"];
+// Oficiales de cubierta + oficiales de máquina (Ultramar) — mismo alcance
+// pendiente de confirmar para Fluvial.
+const PUESTOS_OPB = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "Oficial de la Guardia de Navegación",
+  "Jefe de Máquinas", "Maquinista Naval de 1ra", "Oficial de la Guardia de Máquinas"];
+// Devuelve los ítems de la dotación mínima que no están cubiertos con el
+// rol embarcado actual, o null si no hay certificado cargado para el buque.
+function dotacionFaltante(buque, rolActual) {
+  const req = DOTACION_MINIMA[buque];
+  if (!req) return null;
+  return req
+    .map(r => {
+      const cubiertos = rolActual.filter(({ emp }) => catsOf(emp).some(c => r.puestos.includes(c))).length;
+      return { ...r, cubiertos, falta: Math.max(0, r.cantidad - cubiertos) };
+    })
+    .filter(r => r.falta > 0);
+}
 // Agrupa los puestos por jerarquía, respetando el orden de arriba dentro de
 // cada grupo — solo para mostrarlos con subtítulo en el desplegable, no cambia el orden real.
 const GRUPOS_PUESTO = [
@@ -1949,7 +2045,8 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const rol = !proyectoVer ? [] : asignaciones
     .filter(a => a.proyecto_id===proyectoVer.id && a.fecha_desde<=fecha && (!a.fecha_hasta || a.fecha_hasta>fecha))
     .map(a => ({ asign: a, emp: empleados.find(e=>e.id===a.empleado_id) }))
-    .filter(r => r.emp);
+    .filter(r => r.emp)
+    .sort((a,b) => ordenJerarquia(a.emp) - ordenJerarquia(b.emp) || a.emp.apellido_nombre.localeCompare(b.emp.apellido_nombre));
 
   const enRolIds = new Set(!proyectoVer ? [] : asignaciones.filter(a=>a.proyecto_id===proyectoVer.id && !a.fecha_hasta).map(a=>a.empleado_id));
   const empleadosDisponibles = empleados.filter(e=>e.activo && !enRolIds.has(e.id));
@@ -2043,6 +2140,36 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
             <div className="stat"><div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div></div>
             <div className="stat"><div className="stat-label">Sin documentar</div><div className="stat-value vr">{sinDoc}</div></div>
           </div>
+
+          {(() => {
+            const faltantesDot = dotacionFaltante(buque, rol);
+            if (!faltantesDot || faltantesDot.length === 0) return null;
+            return (
+              <div className="warning-box importante" style={{marginBottom:16}}>
+                ⚠ Dotación mínima de seguridad incompleta ({buque}): falta {faltantesDot.map(f=>`${f.falta} ${f.label} (tiene ${f.cubiertos}/${f.cantidad})`).join(", ")}.
+              </div>
+            );
+          })()}
+          {(() => {
+            const tipoRadio = tiposDoc.find(t => t.nombre === "Certificado de Operador Radiotelefonista (ENACOM)");
+            const okRadio = algunoTieneVigente(rol, documentos, tipoRadio, PUESTOS_RADIOTELEFONISTA);
+            if (okRadio !== false) return null;
+            return (
+              <div className="warning-box importante" style={{marginBottom:16}}>
+                ⚠ Ningún oficial de cubierta a bordo (Capitán, Piloto de Ultr. 1ra u Oficial de la Guardia de Navegación) tiene vigente el Certificado de Operador Radiotelefonista (ENACOM). Se exige al menos uno.
+              </div>
+            );
+          })()}
+          {(() => {
+            const tipoOpb = tiposDoc.find(t => t.nombre === "OPB - Oficial de Protección del Buque");
+            const okOpb = algunoTieneVigente(rol, documentos, tipoOpb, PUESTOS_OPB);
+            if (okOpb !== false) return null;
+            return (
+              <div className="warning-box importante" style={{marginBottom:16}}>
+                ⚠ Ningún oficial a bordo (de cubierta o de máquinas) tiene vigente el curso OPB (Oficial de Protección del Buque). Se exige al menos uno.
+              </div>
+            );
+          })()}
 
           {rol.length === 0 ? (
             <div className="card"><div className="empty-state">No hay tripulantes a bordo en esa fecha.</div></div>
