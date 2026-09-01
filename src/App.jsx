@@ -662,13 +662,15 @@ function algunoTieneVigente(rolActual, documentos, tipoDoc, puestos) {
     return !["vencido", "sin_fecha", "sin_cargar"].includes(estadoEfectivo(doc, tipoDoc));
   });
 }
-// Por ahora solo para los puestos de Ultramar que confirmó Vicky — falta
-// confirmar si aplica igual a los equivalentes Fluvial en Golondrina de Mar.
-const PUESTOS_RADIOTELEFONISTA = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "Oficial de la Guardia de Navegación"];
-// Oficiales de cubierta + oficiales de máquina (Ultramar) — mismo alcance
-// pendiente de confirmar para Fluvial.
+// Aplica a Ultramar y a Fluvial por igual (confirmado): el sentido es que
+// haya alguien habilitado para emitir comunicaciones de emergencia,
+// independientemente del tipo de navegación del buque.
+const PUESTOS_RADIOTELEFONISTA = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "Oficial de la Guardia de Navegación",
+  "Capitán Fluvial", "Of. Fluvial"];
+// Oficiales de cubierta + oficiales de máquina, Ultramar y Fluvial.
 const PUESTOS_OPB = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "Oficial de la Guardia de Navegación",
-  "Jefe de Máquinas", "Maquinista Naval de 1ra", "Oficial de la Guardia de Máquinas"];
+  "Jefe de Máquinas", "Maquinista Naval de 1ra", "Oficial de la Guardia de Máquinas",
+  "Capitán Fluvial", "Of. Fluvial", "Jefe Conductor", "Conductor de Máquinas Navales de 1ra"];
 // Devuelve los ítems de la dotación mínima que no están cubiertos con el
 // rol embarcado actual, o null si no hay certificado cargado para el buque.
 function dotacionFaltante(buque, rolActual) {
