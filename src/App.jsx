@@ -1583,13 +1583,14 @@ function PageProyeccionCompras({ empleados, eppTipos, talles }) {
 }
 
 // ─── MODAL ASIGNAR TRIPULANTE A PROYECTO ───────────────────────────────────
-function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, onClose, onSave, notify }) {
+function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, embarcadosOtros, onClose, onSave, notify }) {
   const [empleadoId, setEmpleadoId] = useState("");
   const [fechaDesde, setFechaDesde] = useState(fechaHoy());
   const [saving, setSaving] = useState(false);
 
   const empleadoSel = empleadosDisponibles.find(e=>e.id===empleadoId);
   const vencidosSel = empleadoSel ? documentosVencidos(empleadoSel, documentos, tiposDoc) : [];
+  const otroSel = empleadoSel ? embarcadosOtros?.[empleadoSel.id] : null;
 
   const handleSave = async () => {
     if (!empleadoId) { notify("Elegí un tripulante"); return; }
@@ -1618,10 +1619,17 @@ function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, on
                 <option value="">Seleccionar...</option>
                 {empleadosDisponibles.map(e=>{
                   const venc = documentosVencidos(e, documentos, tiposDoc);
-                  return <option key={e.id} value={e.id}>{venc.length ? "⚠ " : ""}{e.apellido_nombre} — {catsLabel(e)} ({e.tipo}){venc.length ? " · documentación vencida" : ""}</option>;
+                  const otro = embarcadosOtros?.[e.id];
+                  const avisos = [venc.length?"documentación vencida":null, otro?`ya embarcado en ${otro.buque}`:null].filter(Boolean);
+                  return <option key={e.id} value={e.id}>{avisos.length ? "⚠ " : ""}{e.apellido_nombre} — {catsLabel(e)} ({e.tipo}){avisos.length ? ` · ${avisos.join(" y ")}` : ""}</option>;
                 })}
               </select>
             </FG>
+            {otroSel && (
+              <div className="warning-box">
+                ⚠ {empleadoSel.apellido_nombre} ya está embarcado hoy en {otroSel.buque} ({otroSel.proyecto}) y no fue desembarcado de ahí. Si lo asignás acá también, va a figurar embarcado en los dos buques a la vez.
+              </div>
+            )}
             {vencidosSel.length > 0 && (
               <div className="warning-box">
                 ⚠ {empleadoSel.apellido_nombre} tiene documentación vencida: {vencidosSel.join(", ")}. Revisá antes de embarcarlo.
@@ -1717,6 +1725,42 @@ function ModalNuevoProyecto({ buque, proyectoAnterior, onClose, onSave, notify }
         <div className="mftr">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"Crear proyecto"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL EDITAR PROYECTO (nombre / puerto, sin rotar el proyecto) ────────
+function ModalEditarProyecto({ proyecto, onClose, onSave, notify }) {
+  const [nombre, setNombre] = useState(proyecto.nombre || "");
+  const [puerto, setPuerto] = useState(proyecto.puerto || "");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!nombre.trim()) { notify("Ingresá el nombre del proyecto"); return; }
+    setSaving(true);
+    try {
+      await api.upsertProyecto({ ...proyecto, nombre: nombre.trim(), puerto: puerto.trim() || null });
+      onSave(); onClose();
+    } catch(e) { notify("Error: "+e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="overlay">
+      <div className="modal">
+        <div className="mhdr">
+          <div className="mtitle">Editar proyecto — {proyecto.buque}</div>
+          <button className="mclose" onClick={onClose}>✕</button>
+        </div>
+        <div className="mbody">
+          <FG label="Nombre del proyecto *"><input value={nombre} onChange={e=>setNombre(e.target.value)}/></FG>
+          <FG label="Puerto de embarque"><input value={puerto} onChange={e=>setPuerto(e.target.value)} placeholder="Ej: Buenos Aires"/></FG>
+        </div>
+        <div className="mftr">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"Guardar"}</button>
         </div>
       </div>
     </div>
@@ -1830,17 +1874,30 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const [modalProyecto, setModalProyecto] = useState(false);
   const [editarFecha, setEditarFecha] = useState(null);
   const [modalCrewList, setModalCrewList] = useState(false);
+  const [modalEditarProyecto, setModalEditarProyecto] = useState(false);
+  const [proyectoIdSel, setProyectoIdSel] = useState("");
 
   const proyectoActivo = proyectos.find(p=>p.buque===buque && p.activo);
+  const proyectosBuque = proyectos.filter(p=>p.buque===buque).sort((a,b)=>(b.fecha_inicio||"").localeCompare(a.fecha_inicio||""));
+  const proyectoVer = proyectosBuque.find(p=>p.id===proyectoIdSel) || proyectoActivo || proyectosBuque[0] || null;
+  const viendoActivo = !!proyectoVer && proyectoVer.activo;
   const fechaEsHoy = fecha === fechaHoy();
 
-  const rol = !proyectoActivo ? [] : asignaciones
-    .filter(a => a.proyecto_id===proyectoActivo.id && a.fecha_desde<=fecha && (!a.fecha_hasta || a.fecha_hasta>fecha))
+  const rol = !proyectoVer ? [] : asignaciones
+    .filter(a => a.proyecto_id===proyectoVer.id && a.fecha_desde<=fecha && (!a.fecha_hasta || a.fecha_hasta>fecha))
     .map(a => ({ asign: a, emp: empleados.find(e=>e.id===a.empleado_id) }))
     .filter(r => r.emp);
 
-  const enRolIds = new Set(!proyectoActivo ? [] : asignaciones.filter(a=>a.proyecto_id===proyectoActivo.id && !a.fecha_hasta).map(a=>a.empleado_id));
+  const enRolIds = new Set(!proyectoVer ? [] : asignaciones.filter(a=>a.proyecto_id===proyectoVer.id && !a.fecha_hasta).map(a=>a.empleado_id));
   const empleadosDisponibles = empleados.filter(e=>e.activo && !enRolIds.has(e.id));
+
+  // Tripulantes embarcados HOY en otro proyecto (cualquier buque) — para
+  // avisar si se los quiere embarcar acá también sin haberlos desembarcado.
+  const embarcadosOtros = {};
+  asignaciones.filter(a=>!a.fecha_hasta && (!proyectoVer || a.proyecto_id!==proyectoVer.id)).forEach(a=>{
+    const p = proyectos.find(pr=>pr.id===a.proyecto_id);
+    if (p) embarcadosOtros[a.empleado_id] = { buque: p.buque, proyecto: p.nombre };
+  });
 
   const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
   const tiposDocFiltrados = tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento) : tiposConVto;
@@ -1867,13 +1924,20 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   return (
     <div>
       <div className="filter-row">
-        <select className="filter-select" value={buque} onChange={e=>setBuque(e.target.value)}>
+        <select className="filter-select" value={buque} onChange={e=>{setBuque(e.target.value); setProyectoIdSel("");}}>
           {BUQUES.map(b=><option key={b} value={b}>{b}</option>)}
         </select>
-        {proyectoActivo ? (
-          <div className="proyecto-tag">Proyecto: {proyectoActivo.nombre}</div>
+        {proyectosBuque.length > 0 ? (
+          <select className="filter-select" value={proyectoVer?.id||""} onChange={e=>setProyectoIdSel(e.target.value)}>
+            {proyectosBuque.map(p=><option key={p.id} value={p.id}>{p.nombre}{p.activo?" (activo)":` (cerrado ${fmtDate(p.fecha_fin)})`}</option>)}
+          </select>
         ) : (
-          <div className="info-box warn" style={{padding:"7px 12px",fontSize:13}}>Este buque no tiene proyecto activo.</div>
+          <div className="info-box warn" style={{padding:"7px 12px",fontSize:13}}>Este buque no tiene proyectos cargados.</div>
+        )}
+        {proyectoVer && (
+          <button className="btn btn-sm btn-ghost" onClick={()=>setModalEditarProyecto(true)} title="Editar nombre / puerto">
+            <Ico d={ICONS.pencil} size={14}/>
+          </button>
         )}
         <select className="filter-select" value={tipoDocumento} onChange={e=>setTipoDocumento(e.target.value)}>
           <option value="">Todos los documentos</option>
@@ -1882,15 +1946,15 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
         <FG label="Ver rol a la fecha"><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{height:36}}/></FG>
         <div className="filter-spacer" />
         <button className="btn btn-ghost" onClick={()=>setModalProyecto(true)}>{proyectoActivo?"Nuevo proyecto":"Crear proyecto"}</button>
-        {proyectoActivo && rol.length>0 && (
+        {proyectoVer && rol.length>0 && (
           <button className="btn btn-ghost" onClick={()=>setModalCrewList(true)}>Generar Crew List</button>
         )}
-        {proyectoActivo && fechaEsHoy && (
+        {viendoActivo && fechaEsHoy && (
           <button className="btn btn-primary" onClick={()=>setModalAsignar(true)}><Ico d={ICONS.plus} size={15}/>Embarcar tripulante</button>
         )}
       </div>
 
-      {proyectoActivo && (
+      {proyectoVer && (
         <>
           <div className="stats stats-5">
             <div className="stat"><div className="stat-label">A bordo</div><div className="stat-value va">{rol.length}</div></div>
@@ -1980,8 +2044,17 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
           empleadosDisponibles={empleadosDisponibles}
           documentos={documentos}
           tiposDoc={tiposDoc}
+          embarcadosOtros={embarcadosOtros}
           onClose={()=>setModalAsignar(false)}
           onSave={()=>{ onReload(); notify("Tripulante embarcado"); }}
+          notify={notify}
+        />
+      )}
+      {modalEditarProyecto && proyectoVer && (
+        <ModalEditarProyecto
+          proyecto={proyectoVer}
+          onClose={()=>setModalEditarProyecto(false)}
+          onSave={()=>{ onReload(); notify("Proyecto actualizado"); }}
           notify={notify}
         />
       )}
@@ -2003,9 +2076,9 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
           notify={notify}
         />
       )}
-      {modalCrewList && proyectoActivo && (
+      {modalCrewList && proyectoVer && (
         <ModalCrewList
-          proyecto={proyectoActivo}
+          proyecto={proyectoVer}
           rol={rol}
           documentos={documentos}
           tiposDoc={tiposDoc}
