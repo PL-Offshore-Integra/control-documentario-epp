@@ -578,11 +578,11 @@ const ROLES_NAVALES = [
   { nombre:"Jefe Conductor", jerarquia:"oficial_maquina" },
   { nombre:"Conductor de Máquinas Navales de 1ra", jerarquia:"oficial_maquina" },
   { nombre:"Oficial de la Guardia de Máquinas", jerarquia:"oficial_maquina" },
-  { nombre:"Auxiliar de Máquinas", jerarquia:"marineria" },
-  { nombre:"1er Cabo", jerarquia:"marineria" },
+  { nombre:"Auxiliar de Máquinas / Engrasador", jerarquia:"marineria" },
   { nombre:"Cocinero", jerarquia:"marineria" },
   { nombre:"Marinero", jerarquia:"marineria" },
   { nombre:"Contramaestre", jerarquia:"marineria" },
+  { nombre:"1er Cabo", jerarquia:"marineria" }, // sueldo/jerarquía equivalente a Contramaestre — no es lo mismo que Auxiliar de Máquinas
   { nombre:"Enfermero", jerarquia:"marineria" },
   { nombre:"Mozo", jerarquia:"marineria" },
 ];
@@ -603,9 +603,9 @@ const ORDEN_ROL_EMBARQUE = [
   "Jefe de Máquinas", "Jefe Conductor",
   "Maquinista Naval de 1ra", "Conductor de Máquinas Navales de 1ra", // 1er oficial de máquinas
   "Oficial de la Guardia de Máquinas", // 2do oficial de máquinas
-  "Auxiliar de Máquinas", "1er Cabo",
+  "Auxiliar de Máquinas / Engrasador",
   "Cocinero",
-  "Contramaestre",
+  "Contramaestre", "1er Cabo", // equivalentes en jerarquía/sueldo
   "Marinero",
   "Enfermero", "Mozo", // supuesto: al final, junto con Marineros
 ];
@@ -637,18 +637,18 @@ const DOTACION_MINIMA = {
     { label: "Capitán", puestos: ["Capitán Ultramar"], cantidad: 1 },
     { label: "1° Of. Cubierta", puestos: ["Piloto de Ultr. 1ra"], cantidad: 1 },
     { label: "2° Of. Cubierta", puestos: ["Oficial de la Guardia de Navegación"], cantidad: 1 },
-    { label: "Marineros (incl. Contramaestre)", puestos: ["Marinero", "Contramaestre"], cantidad: 4 },
+    { label: "Marineros (incl. Contramaestre y 1er Cabo)", puestos: ["Marinero", "Contramaestre", "1er Cabo"], cantidad: 4 },
     { label: "Jefe de Máquinas", puestos: ["Jefe de Máquinas"], cantidad: 1 },
     { label: "1er Of. de Máquinas", puestos: ["Maquinista Naval de 1ra"], cantidad: 1 },
-    { label: "Auxiliar de Máquinas", puestos: ["Auxiliar de Máquinas"], cantidad: 1 },
+    { label: "Auxiliar de Máquinas", puestos: ["Auxiliar de Máquinas / Engrasador"], cantidad: 1 },
   ],
   "Golondrina de Mar": [
     { label: "Capitán/Patrón", puestos: ["Capitán Fluvial"], cantidad: 1 },
     { label: "1° Of. Fluvial / 2° Patrón", puestos: ["Of. Fluvial"], cantidad: 1 },
-    { label: "Marineros (incl. Contramaestre)", puestos: ["Marinero", "Contramaestre"], cantidad: 2 },
+    { label: "Marineros (incl. Contramaestre y 1er Cabo)", puestos: ["Marinero", "Contramaestre", "1er Cabo"], cantidad: 2 },
     { label: "Jefe de Máquinas", puestos: ["Jefe de Máquinas", "Jefe Conductor"], cantidad: 1 },
     { label: "1er Of. de Máquinas", puestos: ["Maquinista Naval de 1ra", "Conductor de Máquinas Navales de 1ra"], cantidad: 1 },
-    { label: "Auxiliar de Máquinas", puestos: ["Auxiliar de Máquinas"], cantidad: 1 },
+    { label: "Auxiliar de Máquinas", puestos: ["Auxiliar de Máquinas / Engrasador"], cantidad: 1 },
   ],
 };
 // ─── "AL MENOS UNO DE ESTOS PUESTOS TIENE ESTE DOCUMENTO VIGENTE" ──────────
