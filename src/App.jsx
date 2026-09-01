@@ -53,21 +53,60 @@ function catsOf(emp) {
 }
 function catsLabel(emp) { const c = catsOf(emp); return c.length ? c.join(" · ") : "—"; }
 function esOficial(emp) { return catsOf(emp).some(c => JERARQUIA[c] && JERARQUIA[c] !== "marineria"); }
-// Devuelve los documentos con algún problema real para embarcar: vencidos,
-// desactualizados (COC), sin cargar, o cargados pero sin fecha (ej. Libreta
-// sin sticker y sin cédula, que queda "sin_fecha" aunque el documento exista).
-// Solo entre los tipos que le aplican a ese tripulante (respeta solo_oficialidad).
-function documentosConProblema(emp, documentos, tiposDoc) {
+// Evalúa la situación documental de un tripulante antes de embarcarlo, en 3
+// niveles de gravedad (nunca bloquea el guardado, solo avisa con distinto peso):
+//   nivel1 "grave"      — lo que siempre se revisa: Título 1 vigente,
+//                          Certificado Médico de Libreta, y la habilitación de
+//                          la Libreta (sticker vigente, o cédula vigente si no
+//                          tiene sticker).
+//   nivel2 "importante" — depende del puerto o de si el viaje es internacional:
+//                          Antecedentes Penales, Censo Naval, Certificado
+//                          Médico Internacional.
+//   nivel3 "leve"       — administrativo: DNI, Formulario de Datos, Políticas
+//                          de la Compañía, COC, COVID, Fiebre Amarilla.
+// Título 2 queda deliberadamente afuera: es un plus, nunca "pendiente".
+function evaluarEmbarque(emp, documentos, tiposDoc) {
   const oficial = esOficial(emp);
   const MOTIVO = { sin_cargar: "sin cargar", sin_fecha: "sin fecha cargada", vencido: "vencido", desactualizado: "desactualizado" };
-  return tiposDoc
-    .filter(t => t.tiene_vencimiento && (!t.solo_oficialidad || oficial))
-    .map(t => {
-      const doc = documentos.find(d => d.empleado_id === emp.id && d.tipo_documento_id === t.id);
-      const est = estadoEfectivo(doc, t);
-      return MOTIVO[est] ? `${t.nombre} (${MOTIVO[est]})` : null;
-    })
-    .filter(Boolean);
+  const getDoc = (nombre) => {
+    const t = tiposDoc.find(x => x.nombre === nombre);
+    if (!t) return { t: null, doc: null, est: null };
+    const doc = documentos.find(d => d.empleado_id === emp.id && d.tipo_documento_id === t.id);
+    return { t, doc, est: estadoEfectivo(doc, t) };
+  };
+
+  const nivel1 = [], nivel2 = [], nivel3 = [];
+
+  const tit1 = getDoc("Título 1");
+  const tituloVigente = !!tit1.t && !["vencido", "sin_cargar", "sin_fecha"].includes(tit1.est);
+  if (tit1.t && !tituloVigente) nivel1.push("Título 1 (no vigente)");
+
+  const certLib = getDoc("Certificado Médico de Libreta");
+  if (certLib.t && MOTIVO[certLib.est]) nivel1.push(`Certificado Médico de Libreta (${MOTIVO[certLib.est]})`);
+
+  const libreta = getDoc("Libreta de Embarque");
+  const detLibreta = libreta.doc?.detalle || {};
+  if (libreta.t && tituloVigente) {
+    const stickerVigente = detLibreta.posee_sticker && detLibreta.fecha_sticker && diasHasta(detLibreta.fecha_sticker) >= 0;
+    const cedulaVigente = detLibreta.posee_cedula && detLibreta.fecha_cedula && diasHasta(detLibreta.fecha_cedula) >= 0;
+    if (!stickerVigente && !cedulaVigente) nivel1.push("Libreta de Embarque (sin sticker vigente y sin cédula vigente)");
+  }
+
+  const antec = getDoc("Antecedentes Penales");
+  if (antec.t && MOTIVO[antec.est]) nivel2.push(`Antecedentes Penales (${MOTIVO[antec.est]})`);
+
+  if (libreta.t && !detLibreta.censo) nivel2.push("Censo Naval (no está en el censo)");
+
+  const certInt = getDoc("Certificado Médico Internacional");
+  if (certInt.t && MOTIVO[certInt.est]) nivel2.push(`Certificado Médico Internacional (${MOTIVO[certInt.est]})`);
+
+  ["DNI", "Formulario de Datos", "Políticas de la Compañía", "COC - Armada (oficialidad)", "COVID", "Fiebre Amarilla"].forEach(nombre => {
+    const { t, est } = getDoc(nombre);
+    if (!t || (t.solo_oficialidad && !oficial)) return;
+    if (MOTIVO[est]) nivel3.push(`${t.nombre} (${MOTIVO[est]})`);
+  });
+
+  return { nivel1, nivel2, nivel3 };
 }
 // "Legajo completo" (código 01 a 11): para oficiales, todos los tipos hasta el
 // código 11 inclusive; para marinería, los mismos MENOS COC (no todos los
@@ -335,6 +374,8 @@ tr.falta td{background:#FDF6F5}
 .badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
 .b-red{background:#FAEAE8;color:#B3261E}
 .warning-box{background:#FAEAE8;color:#B3261E;border:1px solid #E8B4AE;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.4;margin:-4px 0 4px}
+.warning-box.importante{background:#FFF4E5;color:#8A5A00;border-color:#F3D9A4}
+.warning-box.leve{background:var(--surface);color:var(--text);border-color:var(--border)}
 .crewlist-print{color:#000;background:#fff}
 .crewlist-print table{color:#000}
 @media print{
@@ -1591,7 +1632,7 @@ function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, em
   const [saving, setSaving] = useState(false);
 
   const empleadoSel = empleadosDisponibles.find(e=>e.id===empleadoId);
-  const vencidosSel = empleadoSel ? documentosConProblema(empleadoSel, documentos, tiposDoc) : [];
+  const evalSel = empleadoSel ? evaluarEmbarque(empleadoSel, documentos, tiposDoc) : { nivel1:[], nivel2:[], nivel3:[] };
   const otroSel = empleadoSel ? embarcadosOtros?.[empleadoSel.id] : null;
 
   const handleSave = async () => {
@@ -1620,10 +1661,11 @@ function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, em
               <select value={empleadoId} onChange={e=>setEmpleadoId(e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {empleadosDisponibles.map(e=>{
-                  const venc = documentosConProblema(e, documentos, tiposDoc);
+                  const ev = evaluarEmbarque(e, documentos, tiposDoc);
                   const otro = embarcadosOtros?.[e.id];
-                  const avisos = [venc.length?"documentación incompleta":null, otro?`ya embarcado en ${otro.buque}`:null].filter(Boolean);
-                  return <option key={e.id} value={e.id}>{avisos.length ? "⚠ " : ""}{e.apellido_nombre} — {catsLabel(e)} ({e.tipo}){avisos.length ? ` · ${avisos.join(" y ")}` : ""}</option>;
+                  const marca = ev.nivel1.length ? "🔴 " : ev.nivel2.length ? "🟠 " : (ev.nivel3.length || otro) ? "⚠ " : "";
+                  const avisos = [ev.nivel1.length?"grave":null, ev.nivel2.length?"importante":null, ev.nivel3.length?"incompleta":null, otro?`ya embarcado en ${otro.buque}`:null].filter(Boolean);
+                  return <option key={e.id} value={e.id}>{marca}{e.apellido_nombre} — {catsLabel(e)} ({e.tipo}){avisos.length ? ` · ${avisos.join(" · ")}` : ""}</option>;
                 })}
               </select>
             </FG>
@@ -1632,9 +1674,19 @@ function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, em
                 ⚠ {empleadoSel.apellido_nombre} ya está embarcado hoy en {otroSel.buque} ({otroSel.proyecto}) y no fue desembarcado de ahí. Si lo asignás acá también, va a figurar embarcado en los dos buques a la vez.
               </div>
             )}
-            {vencidosSel.length > 0 && (
+            {evalSel.nivel1.length > 0 && (
               <div className="warning-box">
-                ⚠ {empleadoSel.apellido_nombre} tiene documentación incompleta: {vencidosSel.join(", ")}. Revisá antes de embarcarlo.
+                🔴 <strong>Grave</strong> — {empleadoSel.apellido_nombre}: {evalSel.nivel1.join(", ")}.
+              </div>
+            )}
+            {evalSel.nivel2.length > 0 && (
+              <div className="warning-box importante">
+                🟠 <strong>Importante</strong> (según puerto / viaje internacional) — {empleadoSel.apellido_nombre}: {evalSel.nivel2.join(", ")}.
+              </div>
+            )}
+            {evalSel.nivel3.length > 0 && (
+              <div className="warning-box leve">
+                Documentación incompleta a atender — {empleadoSel.apellido_nombre}: {evalSel.nivel3.join(", ")}.
               </div>
             )}
             <FG label="Fecha de embarque"><input type="date" value={fechaDesde} onChange={e=>setFechaDesde(e.target.value)}/></FG>
