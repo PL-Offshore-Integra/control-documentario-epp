@@ -379,12 +379,15 @@ tr.falta td{background:#FDF6F5}
 .crewlist-print{color:#000;background:#fff}
 .crewlist-print table{color:#000}
 @media print{
+  @page{size:landscape;margin:10mm}
   body *{visibility:hidden}
   .crewlist-print,.crewlist-print *{visibility:visible}
   .crewlist-print{position:absolute;left:0;top:0;width:100%}
   .no-print{display:none!important}
   .overlay{position:static;background:none}
   .modal{box-shadow:none;max-width:none;max-height:none}
+  .crewlist-print table{font-size:9px!important}
+  .crewlist-print th,.crewlist-print td{padding:2px 3px!important}
 }
 .b-crit{background:#FBEDE4;color:#9A3F16}
 .b-amber{background:#FBF1E3;color:#8F5A0B}
@@ -667,10 +670,11 @@ function algunoTieneVigente(rolActual, documentos, tipoDoc, puestos) {
 // independientemente del tipo de navegación del buque.
 const PUESTOS_RADIOTELEFONISTA = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "Oficial de la Guardia de Navegación",
   "Capitán Fluvial", "Of. Fluvial"];
-// Oficiales de cubierta + oficiales de máquina, Ultramar y Fluvial.
+// OPB: solo Ultramar (confirmado) — como estos puestos son exclusivos de
+// Ultramar, en Golondrina de Mar (Fluvial) directamente no hay candidatos y
+// el aviso no se dispara.
 const PUESTOS_OPB = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "Oficial de la Guardia de Navegación",
-  "Jefe de Máquinas", "Maquinista Naval de 1ra", "Oficial de la Guardia de Máquinas",
-  "Capitán Fluvial", "Of. Fluvial", "Jefe Conductor", "Conductor de Máquinas Navales de 1ra"];
+  "Jefe de Máquinas", "Maquinista Naval de 1ra", "Oficial de la Guardia de Máquinas"];
 // Devuelve los ítems de la dotación mínima que no están cubiertos con el
 // rol embarcado actual, o null si no hay certificado cargado para el buque.
 function dotacionFaltante(buque, rolActual) {
