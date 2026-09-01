@@ -758,6 +758,9 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
                   </select>
                 </FG>
                 <FG label="Fecha de vencimiento"><input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/></FG>
+                <FG label="Limitaciones (opcional)">
+                  <input type="text" value={det.limitaciones||""} onChange={e=>setDet("limitaciones",e.target.value)} placeholder="Ej: no habilitado para..."/>
+                </FG>
               </>
             ) : esLibreta ? (
               <>
@@ -886,7 +889,10 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
                 {checklist.map(({tipo, doc}) => (
                   <tr key={tipo.id} className={!doc ? "falta" : ""}>
                     <td className="text-mono">{tipo.codigo}</td>
-                    <td style={{fontWeight:500}}>{tipo.nombre}{doc?.detalle?.titulo_elegido ? ` — ${doc.detalle.titulo_elegido}` : ""}</td>
+                    <td style={{fontWeight:500}}>
+                      {tipo.nombre}{doc?.detalle?.titulo_elegido ? ` — ${doc.detalle.titulo_elegido}` : ""}
+                      {doc?.detalle?.limitaciones && <div className="text-muted" style={{fontWeight:400,fontSize:12,marginTop:2}}>⚠ Limitaciones: {doc.detalle.limitaciones}</div>}
+                    </td>
                     <td className="text-mono">{doc?.fecha_vto ? fmtDate(doc.fecha_vto) : "—"}</td>
                     <td>
                       {(() => { const est = estadoEfectivo(doc, tipo); return (
@@ -1258,7 +1264,10 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
                     <td style={{fontWeight:500,paddingLeft:24}}>{f.emp.apellido_nombre}</td>
                     <td><span className={`badge ${f.emp.tipo==="efectivo"?"b-blue":"b-gray"}`}>{f.emp.tipo}</span></td>
                     <td className="text-muted">{catsLabel(f.emp)}</td>
-                    <td>{f.nivel==="rol_asignado" ? "Rol de embarque (sin título cargado)" : (f.tipoDoc?.nombre || "Sin documentación cargada")}{f.doc?.detalle?.titulo_elegido ? ` — ${f.doc.detalle.titulo_elegido}` : ""}</td>
+                    <td>
+                      {f.nivel==="rol_asignado" ? "Rol de embarque (sin título cargado)" : (f.tipoDoc?.nombre || "Sin documentación cargada")}{f.doc?.detalle?.titulo_elegido ? ` — ${f.doc.detalle.titulo_elegido}` : ""}
+                      {f.doc?.detalle?.limitaciones && <div className="text-muted" style={{fontSize:12,marginTop:2}}>⚠ {f.doc.detalle.limitaciones}</div>}
+                    </td>
                     <td className="text-mono">{f.doc ? fmtDate(f.doc.fecha_vto) : "—"}</td>
                     <td>
                       {f.nivel==="rol_asignado" && <span className="badge b-gray">Solo rol asignado</span>}
