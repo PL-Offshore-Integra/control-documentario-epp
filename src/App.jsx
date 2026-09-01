@@ -1921,6 +1921,20 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
     catch(e) { notify("Error: "+e.message); }
   };
 
+  const handleReabrirProyecto = async () => {
+    if (!proyectoVer) return;
+    const otroActivo = proyectosBuque.find(p=>p.activo && p.id!==proyectoVer.id);
+    const msg = otroActivo
+      ? `¿Reabrir "${proyectoVer.nombre}"? Esto cierra el otro proyecto activo de ${buque} ("${otroActivo.nombre}") — solo puede haber uno activo por buque.`
+      : `¿Reabrir "${proyectoVer.nombre}"?`;
+    if (!confirm(msg)) return;
+    try {
+      if (otroActivo) await api.upsertProyecto({ ...otroActivo, activo: false, fecha_fin: fechaHoy() });
+      await api.upsertProyecto({ ...proyectoVer, activo: true, fecha_fin: null });
+      onReload(); notify("Proyecto reabierto");
+    } catch(e) { notify("Error: "+e.message); }
+  };
+
   return (
     <div>
       <div className="filter-row">
@@ -1938,6 +1952,9 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
           <button className="btn btn-sm btn-ghost" onClick={()=>setModalEditarProyecto(true)} title="Editar nombre / puerto">
             <Ico d={ICONS.pencil} size={14}/>
           </button>
+        )}
+        {proyectoVer && !proyectoVer.activo && (
+          <button className="btn btn-sm btn-ghost" onClick={handleReabrirProyecto}>Reabrir proyecto</button>
         )}
         <select className="filter-select" value={tipoDocumento} onChange={e=>setTipoDocumento(e.target.value)}>
           <option value="">Todos los documentos</option>
