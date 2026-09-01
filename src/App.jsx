@@ -53,19 +53,21 @@ function catsOf(emp) {
 }
 function catsLabel(emp) { const c = catsOf(emp); return c.length ? c.join(" · ") : "—"; }
 function esOficial(emp) { return catsOf(emp).some(c => JERARQUIA[c] && JERARQUIA[c] !== "marineria"); }
-// Devuelve los nombres de los documentos vencidos (o desactualizados, caso COC)
-// de un tripulante, solo entre los tipos que le aplican (respeta solo_oficialidad).
-// Se usa para advertir antes de embarcarlo a un buque.
-function documentosVencidos(emp, documentos, tiposDoc) {
+// Devuelve los documentos con algún problema real para embarcar: vencidos,
+// desactualizados (COC), sin cargar, o cargados pero sin fecha (ej. Libreta
+// sin sticker y sin cédula, que queda "sin_fecha" aunque el documento exista).
+// Solo entre los tipos que le aplican a ese tripulante (respeta solo_oficialidad).
+function documentosConProblema(emp, documentos, tiposDoc) {
   const oficial = esOficial(emp);
+  const MOTIVO = { sin_cargar: "sin cargar", sin_fecha: "sin fecha cargada", vencido: "vencido", desactualizado: "desactualizado" };
   return tiposDoc
     .filter(t => t.tiene_vencimiento && (!t.solo_oficialidad || oficial))
-    .filter(t => {
+    .map(t => {
       const doc = documentos.find(d => d.empleado_id === emp.id && d.tipo_documento_id === t.id);
       const est = estadoEfectivo(doc, t);
-      return est === "vencido" || est === "desactualizado";
+      return MOTIVO[est] ? `${t.nombre} (${MOTIVO[est]})` : null;
     })
-    .map(t => t.nombre);
+    .filter(Boolean);
 }
 // "Legajo completo" (código 01 a 11): para oficiales, todos los tipos hasta el
 // código 11 inclusive; para marinería, los mismos MENOS COC (no todos los
@@ -1589,7 +1591,7 @@ function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, em
   const [saving, setSaving] = useState(false);
 
   const empleadoSel = empleadosDisponibles.find(e=>e.id===empleadoId);
-  const vencidosSel = empleadoSel ? documentosVencidos(empleadoSel, documentos, tiposDoc) : [];
+  const vencidosSel = empleadoSel ? documentosConProblema(empleadoSel, documentos, tiposDoc) : [];
   const otroSel = empleadoSel ? embarcadosOtros?.[empleadoSel.id] : null;
 
   const handleSave = async () => {
@@ -1618,9 +1620,9 @@ function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, em
               <select value={empleadoId} onChange={e=>setEmpleadoId(e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {empleadosDisponibles.map(e=>{
-                  const venc = documentosVencidos(e, documentos, tiposDoc);
+                  const venc = documentosConProblema(e, documentos, tiposDoc);
                   const otro = embarcadosOtros?.[e.id];
-                  const avisos = [venc.length?"documentación vencida":null, otro?`ya embarcado en ${otro.buque}`:null].filter(Boolean);
+                  const avisos = [venc.length?"documentación incompleta":null, otro?`ya embarcado en ${otro.buque}`:null].filter(Boolean);
                   return <option key={e.id} value={e.id}>{avisos.length ? "⚠ " : ""}{e.apellido_nombre} — {catsLabel(e)} ({e.tipo}){avisos.length ? ` · ${avisos.join(" y ")}` : ""}</option>;
                 })}
               </select>
@@ -1632,7 +1634,7 @@ function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, em
             )}
             {vencidosSel.length > 0 && (
               <div className="warning-box">
-                ⚠ {empleadoSel.apellido_nombre} tiene documentación vencida: {vencidosSel.join(", ")}. Revisá antes de embarcarlo.
+                ⚠ {empleadoSel.apellido_nombre} tiene documentación incompleta: {vencidosSel.join(", ")}. Revisá antes de embarcarlo.
               </div>
             )}
             <FG label="Fecha de embarque"><input type="date" value={fechaDesde} onChange={e=>setFechaDesde(e.target.value)}/></FG>
