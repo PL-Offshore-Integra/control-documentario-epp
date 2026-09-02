@@ -413,6 +413,9 @@ tr.falta td{background:#FDF6F5}
 .badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
 .b-red{background:#FAEAE8;color:#B3261E}
 .warning-box{background:#FAEAE8;color:#B3261E;border:1px solid #E8B4AE;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.4;margin:-4px 0 4px}
+.stcw-item{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.4;padding:5px 0}
+.stcw-item input[type="checkbox"]{flex:0 0 auto;width:16px;height:16px;margin-top:2px}
+.stcw-item span{flex:1}
 .warning-box.importante{background:#FFF4E5;color:#8A5A00;border-color:#F3D9A4}
 .warning-box.leve{background:var(--surface);color:var(--text);border-color:var(--border)}
 .crewlist-print{color:#000;background:#fff}
@@ -955,39 +958,32 @@ function ModalDocumento({ doc, empleadoId, emp, tiposDoc, onClose, onSave, notif
                   <input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/>
                 </FG>
               </>
-            ) : esStcw ? (
-              <>
-                <div className="text-muted" style={{fontSize:12,margin:"-4px 0 4px"}}>
-                  Tildá los cursos que están vigentes según el certificado. Si falta alguno de los obligatorios, el documento queda como "Vencido" y sale en Alertas.
-                </div>
-                <FG label="Básicos (obligatorios — toda la tripulación)">
-                  {STCW_ITEMS_BASICOS.map(i=>(
-                    <label key={i.key} style={{display:"flex",gap:8,alignItems:"center",fontSize:13,padding:"4px 0"}}>
-                      <input type="checkbox" checked={!!stcwItems[i.key]} onChange={e=>setStcwItem(i.key, e.target.checked)}/>
-                      {i.label}
-                    </label>
-                  ))}
-                </FG>
-                {esOficial(emp) && (
-                  <FG label="Avanzados (obligatorios — oficialidad)">
-                    {STCW_ITEMS_AVANZADOS.map(i=>(
-                      <label key={i.key} style={{display:"flex",gap:8,alignItems:"center",fontSize:13,padding:"4px 0"}}>
-                        <input type="checkbox" checked={!!stcwItems[i.key]} onChange={e=>setStcwItem(i.key, e.target.checked)}/>
-                        {i.label}
-                      </label>
-                    ))}
+            ) : esStcw ? (() => {
+              const renderItem = i => (
+                <label key={i.key} className="stcw-item">
+                  <input type="checkbox" checked={!!stcwItems[i.key]} onChange={e=>setStcwItem(i.key, e.target.checked)}/>
+                  <span>{i.label}</span>
+                </label>
+              );
+              return (
+                <>
+                  <div className="text-muted" style={{fontSize:12,margin:"-4px 0 4px"}}>
+                    Tildá los cursos que están vigentes según el certificado. Si falta alguno de los obligatorios, el documento queda como "Vencido" y sale en Alertas.
+                  </div>
+                  <FG label="Básicos (obligatorios — toda la tripulación)">
+                    {STCW_ITEMS_BASICOS.map(renderItem)}
                   </FG>
-                )}
-                <FG label="Deseables (no obligatorios)">
-                  {STCW_ITEMS_DESEABLES.map(i=>(
-                    <label key={i.key} style={{display:"flex",gap:8,alignItems:"center",fontSize:13,padding:"4px 0"}}>
-                      <input type="checkbox" checked={!!stcwItems[i.key]} onChange={e=>setStcwItem(i.key, e.target.checked)}/>
-                      {i.label}
-                    </label>
-                  ))}
-                </FG>
-              </>
-            ) : tipoSel?.tiene_vencimiento ? (
+                  {esOficial(emp) && (
+                    <FG label="Avanzados (obligatorios — oficialidad)">
+                      {STCW_ITEMS_AVANZADOS.map(renderItem)}
+                    </FG>
+                  )}
+                  <FG label="Deseables (no obligatorios)">
+                    {STCW_ITEMS_DESEABLES.map(renderItem)}
+                  </FG>
+                </>
+              );
+            })() : tipoSel?.tiene_vencimiento ? (
               <FG label={labelFecha}>
                 <input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/>
               </FG>
