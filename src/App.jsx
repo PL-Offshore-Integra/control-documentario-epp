@@ -413,9 +413,9 @@ tr.falta td{background:#FDF6F5}
 .badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 8px;border-radius:3px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
 .b-red{background:#FAEAE8;color:#B3261E}
 .warning-box{background:#FAEAE8;color:#B3261E;border:1px solid #E8B4AE;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.4;margin:-4px 0 4px}
-.stcw-item{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.4;padding:5px 0}
-.stcw-item input[type="checkbox"]{flex:0 0 auto;width:16px;height:16px;margin-top:2px}
-.stcw-item span{flex:1}
+.fg label.stcw-item{display:flex;align-items:flex-start;justify-content:flex-start;gap:10px;font-family:var(--sans);font-size:13px;font-weight:400;line-height:1.4;text-transform:none;letter-spacing:normal;color:var(--text);padding:5px 0;cursor:pointer}
+.fg label.stcw-item input[type="checkbox"]{flex:0 0 auto;width:16px;height:16px;min-height:0;margin-top:2px;padding:0}
+.fg label.stcw-item span{flex:1;text-align:left}
 .warning-box.importante{background:#FFF4E5;color:#8A5A00;border-color:#F3D9A4}
 .warning-box.leve{background:var(--surface);color:var(--text);border-color:var(--border)}
 .crewlist-print{color:#000;background:#fff}
