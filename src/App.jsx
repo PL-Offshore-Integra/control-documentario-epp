@@ -723,6 +723,13 @@ const PUESTOS_RADIOTELEFONISTA = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "O
 // el aviso no se dispara.
 const PUESTOS_OPB = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "Oficial de la Guardia de Navegación",
   "Jefe de Máquinas", "Maquinista Naval de 1ra", "Oficial de la Guardia de Máquinas"];
+// Documentos "colectivos": no los debe tener cada tripulante, alcanza con que
+// al menos uno del rol embarcado lo tenga vigente (se chequea con
+// algunoTieneVigente, en Rol del Buque). El Dashboard de Alertas es una
+// vista por persona sin contexto de rol/buque, así que estos dos quedan
+// afuera del chequeo individual por defecto — de lo contrario aparecen como
+// "vencido"/"sin documentar" en todos, aunque no les corresponda.
+const DOCS_COLECTIVOS = ["Certificado de Operador Radiotelefonista (ENACOM)", "OPB - Oficial de Protección del Buque"];
 // Devuelve los ítems de la dotación mínima que no están cubiertos con el
 // rol embarcado actual, o null si no hay certificado cargado para el buque.
 function dotacionFaltante(buque, rolActual) {
@@ -1305,7 +1312,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
   const [nivelFiltro, setNivelFiltro] = useState("");
   const [tituloBuscado, setTituloBuscado] = useState("");
 
-  const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
+  const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento && !DOCS_COLECTIVOS.includes(t.nombre));
   const tiposDocFiltrados = tipoDocumento === "__titulo__" ? tiposDoc.filter(t=>/^Título \d/.test(t.nombre))
     : tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento)
     : tiposConVto;
@@ -2142,7 +2149,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
     if (p) embarcadosOtros[a.empleado_id] = { buque: p.buque, proyecto: p.nombre };
   });
 
-  const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento);
+  const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento && !DOCS_COLECTIVOS.includes(t.nombre));
   const tiposDocFiltrados = tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento) : tiposConVto;
 
   let vencidos=0, criticos=0, proximos=0, sinDoc=0;
