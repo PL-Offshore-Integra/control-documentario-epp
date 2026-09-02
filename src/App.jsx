@@ -451,7 +451,8 @@ tr.falta td{background:#FDF6F5}
 .btn-ghost:hover{color:var(--text);background:var(--surface2)}
 .btn-accent{background:var(--accent2);color:#fff}
 .btn-accent:hover{background:#0A6650}
-.btn-accent:active{background:#08543F}.btn-sm{height:28px;padding:0 12px;font-size:13px}
+.btn-accent:active{background:#08543F}
+.btn-sm{height:28px;padding:0 12px;font-size:13px}
 .btn:disabled{background:var(--surface3);color:var(--muted2);border-color:transparent;cursor:not-allowed}
 
 /* ── CAPAS FLOTANTES ─────────────────────────────────────────────────────── */
@@ -2206,7 +2207,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
         <div className="filter-spacer" />
         <button className="btn btn-ghost" onClick={()=>setModalProyecto(true)}>{proyectoActivo?"Nuevo proyecto":"Crear proyecto"}</button>
         {proyectoVer && rol.length>0 && (
-          <button className="btn btn-ghost" onClick={()=>setModalCrewList(true)}>Generar Crew List</button>
+          <button className="btn btn-accent" onClick={()=>setModalCrewList(true)}>Generar Crew List</button>
         )}
         {viendoActivo && fechaEsHoy && (
           <button className="btn btn-primary" onClick={()=>setModalAsignar(true)}><Ico d={ICONS.plus} size={15}/>Embarcar tripulante</button>
