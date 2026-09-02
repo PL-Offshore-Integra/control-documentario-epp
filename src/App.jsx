@@ -304,7 +304,7 @@ const CSS = `
   --bg:#FAFBFC;--surface:#FFFFFF;--surface2:#F4F6F8;--surface3:#E4E8EC;
   --border:#E4E8EC;--border2:#C9D0D6;
   --text:#0F1419;--muted:#4A5560;--muted2:#7A8792;
-  --accent:#056D76;--accent2:#0E7A5F;--warn:#8F5A0B;--danger:#B3261E;--crit:#9A3F16;
+  --accent:#056D76;--accent2:#0E7A5F;--warn:#8F5A0B;--danger:#B3261E;--crit:#E8590C;--missing:#6B4E9E;
   --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;--r:4px;
   --nav:#082F4E;--action:#056D76;--action-press:#04565D;
   --tr:color 120ms cubic-bezier(.2,0,.38,.9),background-color 120ms cubic-bezier(.2,0,.38,.9),border-color 120ms cubic-bezier(.2,0,.38,.9);
@@ -381,7 +381,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px}
 .stat-label{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.08em;margin-bottom:8px;text-transform:uppercase}
 .stat-value{font-family:var(--mono);font-size:30px;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums}
-.va{color:var(--navy)}.vg{color:var(--accent2)}.vr{color:var(--danger)}.vc{color:var(--crit)}.vm{color:var(--warn)}.vp{color:var(--muted)}
+.va{color:var(--navy)}.vg{color:var(--accent2)}.vr{color:var(--danger)}.vc{color:var(--crit)}.vm{color:var(--warn)}.vp{color:var(--muted)}.vf{color:var(--missing)}
 
 /* ── TABLAS ──────────────────────────────────────────────────────────────── */
 .table-wrap{overflow-x:auto}
@@ -1426,7 +1426,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
         <div className="stat"><div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div></div>
         <div className="stat"><div className="stat-label">Críticos · menos de 30 d</div><div className="stat-value vc">{criticos}</div></div>
         <div className="stat"><div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div></div>
-        <div className="stat"><div className="stat-label">Sin documentar</div><div className="stat-value vr">{sinDoc}</div></div>
+        <div className="stat"><div className="stat-label">Sin documentar</div><div className="stat-value vf">{sinDoc}</div></div>
       </div>
 
       {filasVisibles.length === 0 ? (
@@ -2221,7 +2221,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
             <div className="stat"><div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div></div>
             <div className="stat"><div className="stat-label">Críticos · menos de 30 d</div><div className="stat-value vc">{criticos}</div></div>
             <div className="stat"><div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div></div>
-            <div className="stat"><div className="stat-label">Sin documentar</div><div className="stat-value vr">{sinDoc}</div></div>
+            <div className="stat"><div className="stat-label">Sin documentar</div><div className="stat-value vf">{sinDoc}</div></div>
           </div>
 
           {(() => {
