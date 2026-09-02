@@ -43,8 +43,37 @@ function estadoEfectivo(doc, tipo) {
     // que "venza" ni se desactualice — no genera alertas por antigüedad.
     return doc.fecha_vto ? "vigente" : "sin_fecha";
   }
+  if (modo === "checklist_stcw") {
+    // STCW no es una fecha única: son varios cursos básicos obligatorios
+    // (STCW_ITEMS_BASICOS) que se tildan como vigentes o no al cargarlo. Si
+    // falta alguno, se trata como "vencido" (mismo tratamiento que el resto
+    // de la app le da a un documento con problema).
+    const items = doc.detalle?.stcw_items || {};
+    const completoBasicos = STCW_ITEMS_BASICOS.every(i => items[i.key]);
+    return completoBasicos ? "vigente" : "vencido";
+  }
   return doc.estado === "no_aplica" ? "no_aplica" : "vigente";
 }
+// Cursos STCW obligatorios. Básicos: para toda la tripulación. Avanzados:
+// solo para oficialidad (se controla aparte en evaluarEmbarque, porque
+// estadoEfectivo no tiene el dato de si el tripulante es oficial). El de
+// embarcaciones de supervivencia es "deseable" según Vicky, no obligatorio,
+// así que no cuenta para el estado — se muestra igual como referencia.
+const STCW_ITEMS_BASICOS = [
+  { key: "incendios_basico", label: "Prevención y Lucha contra Incendios (A-VI/1-2)" },
+  { key: "primeros_aux_basico", label: "Primeros Auxilios Básicos (A-VI/1-3)" },
+  { key: "seg_personal_social", label: "Seguridad Personal y Responsabilidades Sociales (A-VI/1-4)" },
+  { key: "proteccion_1", label: "Aspectos relacionados con la Protección (A-VI/6-1)" },
+  { key: "proteccion_2", label: "Aspectos relacionados con la Protección (A-VI/6-2)" },
+];
+const STCW_ITEMS_DESEABLES = [
+  { key: "botes_no_rapidos", label: "Emb. de Supervivencia y Botes de Rescate no rápidos (A-VI/2-1) — deseable" },
+];
+const STCW_ITEMS_AVANZADOS = [
+  { key: "incendios_avanzado", label: "Técnicas Avanzadas de Lucha contra Incendios (A-VI/3)" },
+  { key: "cuidados_medicos", label: "Cuidados Médicos (A-VI/4-2)" },
+  { key: "primeros_aux_avanzado", label: "Primeros Auxilios (A-VI/4-1)" },
+];
 // catsOf soporta datos viejos que todavía tengan un solo "categoria" en vez de "categorias".
 function catsOf(emp) {
   if (Array.isArray(emp?.categorias)) return emp.categorias.filter(Boolean);
@@ -99,6 +128,16 @@ function evaluarEmbarque(emp, documentos, tiposDoc) {
 
   const certInt = getDoc("Certificado Médico Internacional");
   if (certInt.t && MOTIVO[certInt.est]) nivel2.push(`Certificado Médico Internacional (${MOTIVO[certInt.est]})`);
+
+  const stcw = getDoc("STCW");
+  if (stcw.t) {
+    if (MOTIVO[stcw.est]) nivel2.push(`STCW (curso básico obligatorio ${stcw.est === "sin_cargar" ? "sin cargar" : "sin tildar o vencido"})`);
+    else if (oficial) {
+      const items = stcw.doc?.detalle?.stcw_items || {};
+      const faltanAvanzados = STCW_ITEMS_AVANZADOS.some(i => !items[i.key]);
+      if (faltanAvanzados) nivel2.push("STCW (falta algún curso avanzado obligatorio de oficialidad)");
+    }
+  }
 
   ["DNI", "Formulario de Datos", "Políticas de la Compañía", "COC - Armada (oficialidad)", "COVID", "Fiebre Amarilla"].forEach(nombre => {
     const { t, est } = getDoc(nombre);
@@ -795,7 +834,7 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
 }
 
 // ─── MODAL DOCUMENTO ───────────────────────────────────────────────────────
-function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) {
+function ModalDocumento({ doc, empleadoId, emp, tiposDoc, onClose, onSave, notify }) {
   const [form, setForm] = useState(doc || { empleado_id: empleadoId, tipo_documento_id:"", fecha_vto:"", estado:"vigente", archivo_url:"", notas:"", detalle:null });
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -806,6 +845,9 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
   const esLibreta = tipoSel?.nombre === "Libreta de Embarque";
   const esTitulo = /^Título \d/.test(tipoSel?.nombre||"");
   const esFormularioDatos = tipoSel?.nombre === "Formulario de Datos";
+  const esStcw = tipoSel?.modo === "checklist_stcw";
+  const stcwItems = (form.detalle || {}).stcw_items || {};
+  const setStcwItem = (key, val) => setForm(p => ({ ...p, detalle: { ...(p.detalle||{}), stcw_items: { ...((p.detalle||{}).stcw_items||{}), [key]: val } } }));
   const det = form.detalle || {};
   const labelFecha = (() => {
     switch (tipoSel?.nombre) {
@@ -911,6 +953,38 @@ function ModalDocumento({ doc, empleadoId, tiposDoc, onClose, onSave, notify }) 
                 </FG>
                 <FG label={labelFecha}>
                   <input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/>
+                </FG>
+              </>
+            ) : esStcw ? (
+              <>
+                <div className="text-muted" style={{fontSize:12,margin:"-4px 0 4px"}}>
+                  Tildá los cursos que están vigentes según el certificado. Si falta alguno de los obligatorios, el documento queda como "Vencido" y sale en Alertas.
+                </div>
+                <FG label="Básicos (obligatorios — toda la tripulación)">
+                  {STCW_ITEMS_BASICOS.map(i=>(
+                    <label key={i.key} style={{display:"flex",gap:8,alignItems:"center",fontSize:13,padding:"4px 0"}}>
+                      <input type="checkbox" checked={!!stcwItems[i.key]} onChange={e=>setStcwItem(i.key, e.target.checked)}/>
+                      {i.label}
+                    </label>
+                  ))}
+                </FG>
+                {esOficial(emp) && (
+                  <FG label="Avanzados (obligatorios — oficialidad)">
+                    {STCW_ITEMS_AVANZADOS.map(i=>(
+                      <label key={i.key} style={{display:"flex",gap:8,alignItems:"center",fontSize:13,padding:"4px 0"}}>
+                        <input type="checkbox" checked={!!stcwItems[i.key]} onChange={e=>setStcwItem(i.key, e.target.checked)}/>
+                        {i.label}
+                      </label>
+                    ))}
+                  </FG>
+                )}
+                <FG label="Deseables (no obligatorios)">
+                  {STCW_ITEMS_DESEABLES.map(i=>(
+                    <label key={i.key} style={{display:"flex",gap:8,alignItems:"center",fontSize:13,padding:"4px 0"}}>
+                      <input type="checkbox" checked={!!stcwItems[i.key]} onChange={e=>setStcwItem(i.key, e.target.checked)}/>
+                      {i.label}
+                    </label>
+                  ))}
                 </FG>
               </>
             ) : tipoSel?.tiene_vencimiento ? (
@@ -1041,6 +1115,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
         <ModalDocumento
           doc={showDoc?.id ? showDoc : null}
           empleadoId={empleado.id}
+          emp={empleado}
           tiposDoc={tiposDoc}
           onClose={()=>setShowDoc(null)}
           onSave={()=>{ onDocChange(); setShowDoc(null); notify("Documento guardado"); }}
