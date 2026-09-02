@@ -449,7 +449,9 @@ tr.falta td{background:#FDF6F5}
 .btn-danger:hover{background:#FAEAE8;border-color:var(--danger)}
 .btn-ghost{background:var(--surface);color:var(--muted);border-color:var(--border2)}
 .btn-ghost:hover{color:var(--text);background:var(--surface2)}
-.btn-sm{height:28px;padding:0 12px;font-size:13px}
+.btn-accent{background:var(--accent2);color:#fff}
+.btn-accent:hover{background:#0A6650}
+.btn-accent:active{background:#08543F}.btn-sm{height:28px;padding:0 12px;font-size:13px}
 .btn:disabled{background:var(--surface3);color:var(--muted2);border-color:transparent;cursor:not-allowed}
 
 /* ── CAPAS FLOTANTES ─────────────────────────────────────────────────────── */
