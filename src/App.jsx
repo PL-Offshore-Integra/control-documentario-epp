@@ -1036,8 +1036,17 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
   };
 
   // Armar checklist completo — a Marinería no se le pide lo que es solo de Oficialidad (COC, STCW Oficialidad).
+  // Radiotelefonista y OPB son puestos-específicos, no "toda la oficialidad":
+  // solo se piden si el rol de embarque de la persona está entre los que
+  // habilitan ese curso (ver PUESTOS_RADIOTELEFONISTA / PUESTOS_OPB).
+  const catsEmp = catsOf(empleado);
   const checklist = tiposDoc
     .filter(t => !t.solo_oficialidad || oficial)
+    .filter(t => {
+      if (t.nombre === "Certificado de Operador Radiotelefonista (ENACOM)") return catsEmp.some(c => PUESTOS_RADIOTELEFONISTA.includes(c));
+      if (t.nombre === "OPB - Oficial de Protección del Buque") return catsEmp.some(c => PUESTOS_OPB.includes(c));
+      return true;
+    })
     .map(t => {
       const doc = docsEmp.find(d => d.tipo_documento_id === t.id);
       return { tipo: t, doc };
