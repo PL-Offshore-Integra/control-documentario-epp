@@ -65,15 +65,19 @@ const STCW_ITEMS_BASICOS = [
   { key: "primeros_aux_basico", label: "Primeros Auxilios Básicos (A-VI/1-3)" },
   { key: "seg_personal_social", label: "Seguridad Personal y Responsabilidades Sociales (A-VI/1-4)" },
   { key: "proteccion_1", label: "Aspectos relacionados con la Protección (A-VI/6-1)" },
-  { key: "proteccion_2", label: "Aspectos relacionados con la Protección (A-VI/6-2)" },
 ];
 const STCW_ITEMS_DESEABLES = [
   { key: "botes_no_rapidos", label: "Emb. de Supervivencia y Botes de Rescate no rápidos (A-VI/2-1) — deseable" },
 ];
+// Avanzados: obligatorios solo para oficialidad, no para marinería. Acá
+// entra también "Aspectos relacionados con la Protección (A-VI/6-2)" —
+// pese al nombre parecido a proteccion_1 (que sí es básico para todos), este
+// nivel 2 no se le exige a marinería (confirmado).
 const STCW_ITEMS_AVANZADOS = [
   { key: "incendios_avanzado", label: "Técnicas Avanzadas de Lucha contra Incendios (A-VI/3)" },
   { key: "cuidados_medicos", label: "Cuidados Médicos (A-VI/4-2)" },
   { key: "primeros_aux_avanzado", label: "Primeros Auxilios (A-VI/4-1)" },
+  { key: "proteccion_2", label: "Aspectos relacionados con la Protección (A-VI/6-2)" },
 ];
 // catsOf soporta datos viejos que todavía tengan un solo "categoria" en vez de "categorias".
 function catsOf(emp) {
@@ -1008,7 +1012,7 @@ function ModalDocumento({ doc, empleadoId, emp, tiposDoc, onClose, onSave, notif
                     {STCW_ITEMS_BASICOS.map(renderItem)}
                   </FG>
                   {esOficial(emp) && (
-                    <FG label="Avanzados (obligatorios — oficialidad)">
+                    <FG label="Avanzados y Protección Nivel 2 (obligatorios — oficialidad)">
                       {STCW_ITEMS_AVANZADOS.map(renderItem)}
                     </FG>
                   )}
