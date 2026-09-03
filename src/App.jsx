@@ -150,6 +150,16 @@ function evaluarEmbarque(emp, documentos, tiposDoc) {
     if (MOTIVO[est]) nivel3.push(`${t.nombre} (${MOTIVO[est]})`);
   });
 
+  // Manipulación de Alimentos (solo Cocinero): no vence para PNA, pero se
+  // considera "requiere atención" a los 2 años sin actualizar (estándar
+  // internacional). No es un incumplimiento — queda en nivel 3 (leve), no en
+  // nivel 1/2, para no tratarlo como si bloqueara el embarque.
+  const manipAlim = getDoc("Manipulación de Alimentos");
+  if (manipAlim.t && aplicaDocumentoPuesto(manipAlim.t, emp)) {
+    if (manipAlim.est === "desactualizado") nivel3.push("Manipulación de Alimentos (requiere atención — más de 2 años sin actualizar)");
+    else if (MOTIVO[manipAlim.est]) nivel3.push(`Manipulación de Alimentos (${MOTIVO[manipAlim.est]})`);
+  }
+
   return { nivel1, nivel2, nivel3 };
 }
 // "Legajo completo" (código 01 a 11): para oficiales, todos los tipos hasta el
@@ -390,6 +400,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 /* ── KPIs ────────────────────────────────────────────────────────────────── */
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}
 .stats-5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.stats-6{grid-template-columns:repeat(6,minmax(0,1fr))}
 .stats-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px}
 .stat-clickable{cursor:pointer;transition:var(--tr)}
@@ -533,7 +544,7 @@ tr.falta td{background:#FDF6F5}
   .main{padding-bottom:72px}
   .content{padding:16px}
   .card{padding:16px;margin-bottom:12px}
-  .stats,.stats-5{grid-template-columns:1fr 1fr;gap:12px}
+  .stats,.stats-5,.stats-6{grid-template-columns:1fr 1fr;gap:12px}
   .stat{padding:14px}
   .stat-value{font-size:24px}
   .form-grid{grid-template-columns:1fr;gap:12px}
@@ -899,6 +910,7 @@ function ModalDocumento({ doc, empleadoId, emp, tiposDoc, onClose, onSave, notif
       case "COC - Armada (oficialidad)": return "Fecha de emisión";
       case "COVID": case "Fiebre Amarilla": return "Fecha del certificado";
       case "Políticas de la Compañía": return "Fecha de aceptación";
+      case "Manipulación de Alimentos": return "Fecha de emisión / última renovación";
       default: return "Fecha de vencimiento";
     }
   })();
@@ -1029,7 +1041,7 @@ function ModalDocumento({ doc, empleadoId, emp, tiposDoc, onClose, onSave, notif
                 <input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/>
                 {tipoSel?.nombre === "Manipulación de Alimentos" && (
                   <div className="text-muted" style={{fontSize:12,marginTop:4}}>
-                    Sugerencia: el certificado suele actualizarse cada 2 años — verificalo contra la fecha real del documento.
+                    No vence para PNA. Cargá la fecha de emisión o de la última renovación: a los 2 años el sistema lo marca "Requiere atención" (no "Vencido") para que se revise antes de un viaje internacional.
                   </div>
                 )}
               </FG>
@@ -1127,7 +1139,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
                         est === "critico" ? <span className="badge b-crit">Crítico</span> :
                         est === "proximo" ? <span className="badge b-amber">A vencer</span> :
                         est === "ok" ? <span className="badge b-green">Vigente</span> :
-                        est === "desactualizado" ? <span className="badge b-red">Desactualizado</span> :
+                        est === "desactualizado" ? <span className="badge b-amber">Requiere atención</span> :
                         est === "actualizado" ? <span className="badge b-green">Actualizado</span> :
                         est === "no_aplica" ? <span className="badge b-gray">No aplica</span> :
                         <span className="badge b-green">Vigente</span>
@@ -1419,15 +1431,17 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
       if (docsEmp.length === 0) filas.push({ emp, tipoDoc: null, doc: null, nivel: "sin_doc" });
     }
   });
-  filas.sort((a,b)=>{const o={vencido:0,desactualizado:0,sin_doc:1,critico:2,proximo:3};return (o[a.nivel]??4)-(o[b.nivel]??4);});
+  // "desactualizado" (ej. Manipulación de Alimentos a los 2 años) no es un
+  // incumplimiento como "vencido" — no vence para PNA, solo requiere
+  // revisión. Se cuenta y filtra aparte, no se mezcla con vencidos.
+  filas.sort((a,b)=>{const o={vencido:0,sin_doc:1,critico:2,desactualizado:3,proximo:4};return (o[a.nivel]??5)-(o[b.nivel]??5);});
 
-  const vencidos = filas.filter(f=>f.nivel==="vencido"||f.nivel==="desactualizado").length;
+  const vencidos = filas.filter(f=>f.nivel==="vencido").length;
   const criticos = filas.filter(f=>f.nivel==="critico").length;
   const proximos = filas.filter(f=>f.nivel==="proximo").length;
   const sinDoc   = filas.filter(f=>f.nivel==="sin_doc").length;
-  const filasVisibles = nivelFiltro
-    ? filas.filter(f => nivelFiltro==="vencido" ? (f.nivel==="vencido"||f.nivel==="desactualizado") : f.nivel===nivelFiltro)
-    : filas;
+  const atencion = filas.filter(f=>f.nivel==="desactualizado").length;
+  const filasVisibles = nivelFiltro ? filas.filter(f => f.nivel===nivelFiltro) : filas;
 
   return (
     <div>
@@ -1466,10 +1480,11 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
           <option value="critico">Solo críticos (menos de 30d)</option>
           <option value="proximo">Solo a vencer (menos de 90d)</option>
           <option value="sin_doc">Solo sin documentar</option>
+          <option value="desactualizado">Solo requiere atención</option>
         </select>
       </div>
 
-      <div className="stats stats-5">
+      <div className="stats stats-6">
         <div className="stat"><div className="stat-label">Tripulantes activos</div><div className="stat-value va">{empleadosFiltrados.length}</div></div>
         <div className={`stat${vencidos>0?" stat-clickable":""}${nivelFiltro==="vencido"?" stat-active":""}`} onClick={()=>vencidos>0 && setNivelFiltro(nivelFiltro==="vencido"?"":"vencido")}>
           <div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div>
@@ -1479,6 +1494,9 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
         </div>
         <div className={`stat${proximos>0?" stat-clickable":""}${nivelFiltro==="proximo"?" stat-active":""}`} onClick={()=>proximos>0 && setNivelFiltro(nivelFiltro==="proximo"?"":"proximo")}>
           <div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div>
+        </div>
+        <div className={`stat${atencion>0?" stat-clickable":""}${nivelFiltro==="desactualizado"?" stat-active":""}`} onClick={()=>atencion>0 && setNivelFiltro(nivelFiltro==="desactualizado"?"":"desactualizado")}>
+          <div className="stat-label">Requiere atención</div><div className="stat-value vm">{atencion}</div>
         </div>
         <div className={`stat${sinDoc>0?" stat-clickable":""}${nivelFiltro==="sin_doc"?" stat-active":""}`} onClick={()=>sinDoc>0 && setNivelFiltro(nivelFiltro==="sin_doc"?"":"sin_doc")}>
           <div className="stat-label">Sin documentar</div><div className="stat-value vf">{sinDoc}</div>
@@ -1508,7 +1526,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
                       {f.nivel==="rol_asignado" && <span className="badge b-gray">Solo rol asignado</span>}
                       {!f.doc && f.nivel!=="rol_asignado" && <span className="badge b-red">Sin cargar</span>}
                       {f.nivel==="vencido" && <span className="badge b-red">Vencido {Math.abs(diasHasta(f.doc.fecha_vto))}d</span>}
-                      {f.nivel==="desactualizado" && <span className="badge b-red">Desactualizado</span>}
+                      {f.nivel==="desactualizado" && <span className="badge b-amber">Requiere atención</span>}
                       {f.nivel==="critico" && <span className="badge b-crit">Crítico {diasHasta(f.doc.fecha_vto)}d</span>}
                       {f.nivel==="proximo" && <span className="badge b-amber">A vencer {diasHasta(f.doc.fecha_vto)}d</span>}
                       {f.nivel==="ok" && <span className="badge b-green">Vigente {diasHasta(f.doc.fecha_vto)}d</span>}
@@ -2202,7 +2220,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const tiposConVto = tiposDoc.filter(t=>t.tiene_vencimiento && !DOCS_COLECTIVOS.includes(t.nombre));
   const tiposDocFiltrados = tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento) : tiposConVto;
 
-  let vencidos=0, criticos=0, proximos=0, sinDoc=0;
+  let vencidos=0, criticos=0, proximos=0, sinDoc=0, atencion=0;
   const filasProblema = [];
   rol.forEach(({emp}) => {
     tiposDocFiltrados.forEach(t => {
@@ -2211,7 +2229,10 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
       const est = estadoEfectivo(doc, t);
       if (est==="sin_cargar") { sinDoc++; filasProblema.push({ emp, tipoDoc: t, doc: null, nivel: "sin_doc" }); return; }
       if (est==="sin_fecha") return;
-      if (est==="vencido"||est==="desactualizado") { vencidos++; filasProblema.push({ emp, tipoDoc: t, doc, nivel: "vencido" }); }
+      // "desactualizado" (ej. Manipulación de Alimentos a los 2 años) no
+      // vence para PNA — no es un "vencido", queda como categoría propia.
+      if (est==="vencido") { vencidos++; filasProblema.push({ emp, tipoDoc: t, doc, nivel: "vencido" }); }
+      else if (est==="desactualizado") { atencion++; filasProblema.push({ emp, tipoDoc: t, doc, nivel: "desactualizado" }); }
       else if (est==="critico") { criticos++; filasProblema.push({ emp, tipoDoc: t, doc, nivel: "critico" }); }
       else if (est==="proximo") { proximos++; filasProblema.push({ emp, tipoDoc: t, doc, nivel: "proximo" }); }
     });
@@ -2285,7 +2306,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
 
       {proyectoVer && (
         <>
-          <div className="stats stats-5">
+          <div className="stats stats-6">
             <div className="stat"><div className="stat-label">A bordo</div><div className="stat-value va">{rol.length}</div></div>
             <div className={`stat${vencidos>0?" stat-clickable":""}${nivelFiltro==="vencido"?" stat-active":""}`} onClick={()=>vencidos>0 && setNivelFiltro(nivelFiltro==="vencido"?"":"vencido")}>
               <div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div>
@@ -2298,6 +2319,9 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
             </div>
             <div className={`stat${sinDoc>0?" stat-clickable":""}${nivelFiltro==="sin_doc"?" stat-active":""}`} onClick={()=>sinDoc>0 && setNivelFiltro(nivelFiltro==="sin_doc"?"":"sin_doc")}>
               <div className="stat-label">Sin documentar</div><div className="stat-value vf">{sinDoc}</div>
+            </div>
+            <div className={`stat${atencion>0?" stat-clickable":""}${nivelFiltro==="desactualizado"?" stat-active":""}`} onClick={()=>atencion>0 && setNivelFiltro(nivelFiltro==="desactualizado"?"":"desactualizado")}>
+              <div className="stat-label">Requiere atención</div><div className="stat-value vm">{atencion}</div>
             </div>
           </div>
 
@@ -2317,7 +2341,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
           {nivelFiltro && (
             <div className="card flush" style={{marginBottom:16}}>
               <div className="card-title flex-between">
-                <span>Detalle — {{vencido:"Documentos vencidos",critico:"Críticos (menos de 30 d)",proximo:"A vencer (menos de 90 d)",sin_doc:"Sin documentar"}[nivelFiltro]} ({filasProblemaVisibles.length})</span>
+                <span>Detalle — {{vencido:"Documentos vencidos",critico:"Críticos (menos de 30 d)",proximo:"A vencer (menos de 90 d)",sin_doc:"Sin documentar",desactualizado:"Requiere atención"}[nivelFiltro]} ({filasProblemaVisibles.length})</span>
                 <button className="btn btn-sm btn-ghost" onClick={()=>setNivelFiltro("")}>Quitar filtro ✕</button>
               </div>
               <div className="table-wrap">
@@ -2401,7 +2425,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                               est === "vencido" ? <span className="badge b-red">Vencido</span> :
                               est === "critico" ? <span className="badge b-crit">Crítico</span> :
                               est === "proximo" ? <span className="badge b-amber">A vencer</span> :
-                              est === "desactualizado" ? <span className="badge b-red">Desactualizado</span> :
+                              est === "desactualizado" ? <span className="badge b-amber">Requiere atención</span> :
                               est === "actualizado" ? <span className="badge b-green">Actualizado</span> :
                               <span className="badge b-green">Vigente</span>
                             ); })()}</td>
@@ -2551,7 +2575,7 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
     }));
     if (items.length === 0) { notify("No hay archivos cargados para descargar"); return; }
     if (problemas > 0) {
-      const seguir = confirm(`Hay ${problemas} documento${problemas===1?"":"s"} vencido${problemas===1?"":"s"} o sin cargar entre los seleccionados. ¿Descargar igual solo lo que está disponible?`);
+      const seguir = confirm(`Hay ${problemas} documento${problemas===1?"":"s"} vencido, pendiente de actualizar o sin cargar entre los seleccionados. ¿Descargar igual solo lo que está disponible?`);
       if (!seguir) return;
     }
     setZipping(true);
