@@ -1459,10 +1459,18 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
 
       <div className="stats stats-5">
         <div className="stat"><div className="stat-label">Tripulantes activos</div><div className="stat-value va">{empleadosFiltrados.length}</div></div>
-        <div className="stat"><div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div></div>
-        <div className="stat"><div className="stat-label">Críticos · menos de 30 d</div><div className="stat-value vc">{criticos}</div></div>
-        <div className="stat"><div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div></div>
-        <div className="stat"><div className="stat-label">Sin documentar</div><div className="stat-value vf">{sinDoc}</div></div>
+        <div className={`stat${vencidos>0?" stat-clickable":""}${nivelFiltro==="vencido"?" stat-active":""}`} onClick={()=>vencidos>0 && setNivelFiltro(nivelFiltro==="vencido"?"":"vencido")}>
+          <div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div>
+        </div>
+        <div className={`stat${criticos>0?" stat-clickable":""}${nivelFiltro==="critico"?" stat-active":""}`} onClick={()=>criticos>0 && setNivelFiltro(nivelFiltro==="critico"?"":"critico")}>
+          <div className="stat-label">Críticos · menos de 30 d</div><div className="stat-value vc">{criticos}</div>
+        </div>
+        <div className={`stat${proximos>0?" stat-clickable":""}${nivelFiltro==="proximo"?" stat-active":""}`} onClick={()=>proximos>0 && setNivelFiltro(nivelFiltro==="proximo"?"":"proximo")}>
+          <div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div>
+        </div>
+        <div className={`stat${sinDoc>0?" stat-clickable":""}${nivelFiltro==="sin_doc"?" stat-active":""}`} onClick={()=>sinDoc>0 && setNivelFiltro(nivelFiltro==="sin_doc"?"":"sin_doc")}>
+          <div className="stat-label">Sin documentar</div><div className="stat-value vf">{sinDoc}</div>
+        </div>
       </div>
 
       {filasVisibles.length === 0 ? (
