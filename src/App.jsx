@@ -380,6 +380,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}
 .stats-5{grid-template-columns:repeat(5,minmax(0,1fr))}
 .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px}
+.stat-clickable{cursor:pointer;transition:var(--tr)}
+.stat-clickable:hover{background:var(--surface2);border-color:var(--border2)}
+.stat-active{border-color:var(--action);border-width:2px;padding:15px 17px}
 .stat-label{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.08em;margin-bottom:8px;text-transform:uppercase}
 .stat-value{font-family:var(--mono);font-size:30px;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums}
 .va{color:var(--navy)}.vg{color:var(--accent2)}.vr{color:var(--danger)}.vc{color:var(--crit)}.vm{color:var(--warn)}.vp{color:var(--muted)}.vf{color:var(--missing)}
@@ -2151,6 +2154,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const [modalCrewList, setModalCrewList] = useState(false);
   const [modalEditarProyecto, setModalEditarProyecto] = useState(false);
   const [proyectoIdSel, setProyectoIdSel] = useState("");
+  const [nivelFiltro, setNivelFiltro] = useState("");
 
   const proyectoActivo = proyectos.find(p=>p.buque===buque && p.activo);
   const proyectosBuque = proyectos.filter(p=>p.buque===buque).sort((a,b)=>(b.fecha_inicio||"").localeCompare(a.fecha_inicio||""));
@@ -2179,18 +2183,22 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const tiposDocFiltrados = tipoDocumento ? tiposDoc.filter(t=>t.id===tipoDocumento) : tiposConVto;
 
   let vencidos=0, criticos=0, proximos=0, sinDoc=0;
+  const filasProblema = [];
   rol.forEach(({emp}) => {
     tiposDocFiltrados.forEach(t => {
       if (!aplicaDocumentoPuesto(t, emp)) return;
       const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
       const est = estadoEfectivo(doc, t);
-      if (est==="sin_cargar") { sinDoc++; return; }
+      if (est==="sin_cargar") { sinDoc++; filasProblema.push({ emp, tipoDoc: t, doc: null, nivel: "sin_doc" }); return; }
       if (est==="sin_fecha") return;
-      if (est==="vencido"||est==="desactualizado") vencidos++;
-      else if (est==="critico") criticos++;
-      else if (est==="proximo") proximos++;
+      if (est==="vencido"||est==="desactualizado") { vencidos++; filasProblema.push({ emp, tipoDoc: t, doc, nivel: "vencido" }); }
+      else if (est==="critico") { criticos++; filasProblema.push({ emp, tipoDoc: t, doc, nivel: "critico" }); }
+      else if (est==="proximo") { proximos++; filasProblema.push({ emp, tipoDoc: t, doc, nivel: "proximo" }); }
     });
   });
+  const filasProblemaVisibles = filasProblema
+    .filter(f => f.nivel === nivelFiltro)
+    .sort((a,b) => ordenJerarquia(a.emp) - ordenJerarquia(b.emp) || a.emp.apellido_nombre.localeCompare(b.emp.apellido_nombre));
 
   const handleDesembarcar = async (asign, nombre) => {
     if (!confirm(`¿Marcar a ${nombre} como desembarcado hoy?`)) return;
@@ -2252,11 +2260,46 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
         <>
           <div className="stats stats-5">
             <div className="stat"><div className="stat-label">A bordo</div><div className="stat-value va">{rol.length}</div></div>
-            <div className="stat"><div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div></div>
-            <div className="stat"><div className="stat-label">Críticos · menos de 30 d</div><div className="stat-value vc">{criticos}</div></div>
-            <div className="stat"><div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div></div>
-            <div className="stat"><div className="stat-label">Sin documentar</div><div className="stat-value vf">{sinDoc}</div></div>
+            <div className={`stat${vencidos>0?" stat-clickable":""}${nivelFiltro==="vencido"?" stat-active":""}`} onClick={()=>vencidos>0 && setNivelFiltro(nivelFiltro==="vencido"?"":"vencido")}>
+              <div className="stat-label">Documentos vencidos</div><div className="stat-value vr">{vencidos}</div>
+            </div>
+            <div className={`stat${criticos>0?" stat-clickable":""}${nivelFiltro==="critico"?" stat-active":""}`} onClick={()=>criticos>0 && setNivelFiltro(nivelFiltro==="critico"?"":"critico")}>
+              <div className="stat-label">Críticos · menos de 30 d</div><div className="stat-value vc">{criticos}</div>
+            </div>
+            <div className={`stat${proximos>0?" stat-clickable":""}${nivelFiltro==="proximo"?" stat-active":""}`} onClick={()=>proximos>0 && setNivelFiltro(nivelFiltro==="proximo"?"":"proximo")}>
+              <div className="stat-label">A vencer · menos de 90 d</div><div className="stat-value vm">{proximos}</div>
+            </div>
+            <div className={`stat${sinDoc>0?" stat-clickable":""}${nivelFiltro==="sin_doc"?" stat-active":""}`} onClick={()=>sinDoc>0 && setNivelFiltro(nivelFiltro==="sin_doc"?"":"sin_doc")}>
+              <div className="stat-label">Sin documentar</div><div className="stat-value vf">{sinDoc}</div>
+            </div>
           </div>
+
+          {nivelFiltro && (
+            <div className="card flush" style={{marginBottom:16}}>
+              <div className="card-title flex-between">
+                <span>Detalle — {{vencido:"Documentos vencidos",critico:"Críticos (menos de 30 d)",proximo:"A vencer (menos de 90 d)",sin_doc:"Sin documentar"}[nivelFiltro]} ({filasProblemaVisibles.length})</span>
+                <button className="btn btn-sm btn-ghost" onClick={()=>setNivelFiltro("")}>Quitar filtro ✕</button>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th style={{paddingLeft:24}}>Tripulante</th><th>Rol de embarque</th><th>Documento</th><th>Vencimiento</th><th></th></tr></thead>
+                  <tbody>
+                    {filasProblemaVisibles.map((f,i) => (
+                      <tr key={i}>
+                        <td style={{fontWeight:500,paddingLeft:24}}>{f.emp.apellido_nombre}</td>
+                        <td className="text-muted">{catsLabel(f.emp)}</td>
+                        <td>{f.tipoDoc.nombre}</td>
+                        <td className="text-mono">{f.doc?.fecha_vto ? fmtDate(f.doc.fecha_vto) : "—"}</td>
+                        <td style={{paddingRight:24}}>
+                          <button className="btn btn-sm btn-ghost" onClick={()=>onVerEmpleado(f.emp)}>Ver legajo</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {(() => {
             const faltantesDot = dotacionFaltante(buque, rol);
