@@ -60,6 +60,7 @@ function estadoEfectivo(doc, tipo) {
 // embarcaciones de supervivencia es "deseable" según Vicky, no obligatorio,
 // así que no cuenta para el estado — se muestra igual como referencia.
 const STCW_ITEMS_BASICOS = [
+  { key: "supervivencia_personal", label: "Técnicas de Supervivencia Personal (A-VI/1-1)" },
   { key: "incendios_basico", label: "Prevención y Lucha contra Incendios (A-VI/1-2)" },
   { key: "primeros_aux_basico", label: "Primeros Auxilios Básicos (A-VI/1-3)" },
   { key: "seg_personal_social", label: "Seguridad Personal y Responsabilidades Sociales (A-VI/1-4)" },
@@ -730,6 +731,21 @@ const PUESTOS_OPB = ["Capitán Ultramar", "Piloto de Ultr. 1ra", "Oficial de la 
 // afuera del chequeo individual por defecto — de lo contrario aparecen como
 // "vencido"/"sin documentar" en todos, aunque no les corresponda.
 const DOCS_COLECTIVOS = ["Certificado de Operador Radiotelefonista (ENACOM)", "OPB - Oficial de Protección del Buque"];
+// Documentos que solo corresponden a determinados puestos (ni a toda la
+// tripulación, ni a "toda la oficialidad"): si el rol de embarque de la
+// persona no está en la lista, ni siquiera se le debe pedir. A diferencia de
+// los "colectivos" de arriba, estos SÍ se piden a cada persona del puesto
+// (no alcanza con que uno solo lo tenga) — por eso van en un mapa aparte.
+const DOCS_POR_PUESTO = {
+  "Certificado de Operador Radiotelefonista (ENACOM)": PUESTOS_RADIOTELEFONISTA,
+  "OPB - Oficial de Protección del Buque": PUESTOS_OPB,
+  "Manipulación de Alimentos": ["Cocinero"],
+};
+function aplicaDocumentoPuesto(t, emp) {
+  const puestos = DOCS_POR_PUESTO[t.nombre];
+  if (!puestos) return true;
+  return catsOf(emp).some(c => puestos.includes(c));
+}
 // Devuelve los ítems de la dotación mínima que no están cubiertos con el
 // rol embarcado actual, o null si no hay certificado cargado para el buque.
 function dotacionFaltante(buque, rolActual) {
@@ -996,6 +1012,11 @@ function ModalDocumento({ doc, empleadoId, emp, tiposDoc, onClose, onSave, notif
             })() : tipoSel?.tiene_vencimiento ? (
               <FG label={labelFecha}>
                 <input type="date" value={form.fecha_vto||""} onChange={e=>set("fecha_vto",e.target.value)}/>
+                {tipoSel?.nombre === "Manipulación de Alimentos" && (
+                  <div className="text-muted" style={{fontSize:12,marginTop:4}}>
+                    Sugerencia: el certificado suele actualizarse cada 2 años — verificalo contra la fecha real del documento.
+                  </div>
+                )}
               </FG>
             ) : (
               <FG label="Estado">
@@ -1039,14 +1060,9 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
   // Radiotelefonista y OPB son puestos-específicos, no "toda la oficialidad":
   // solo se piden si el rol de embarque de la persona está entre los que
   // habilitan ese curso (ver PUESTOS_RADIOTELEFONISTA / PUESTOS_OPB).
-  const catsEmp = catsOf(empleado);
   const checklist = tiposDoc
     .filter(t => !t.solo_oficialidad || oficial)
-    .filter(t => {
-      if (t.nombre === "Certificado de Operador Radiotelefonista (ENACOM)") return catsEmp.some(c => PUESTOS_RADIOTELEFONISTA.includes(c));
-      if (t.nombre === "OPB - Oficial de Protección del Buque") return catsEmp.some(c => PUESTOS_OPB.includes(c));
-      return true;
-    })
+    .filter(t => aplicaDocumentoPuesto(t, empleado))
     .map(t => {
       const doc = docsEmp.find(d => d.tipo_documento_id === t.id);
       return { tipo: t, doc };
@@ -1370,6 +1386,7 @@ function PageDashboard({ empleados, documentos, tiposDoc, onVerEmpleado }) {
       return;
     }
     tiposDocFiltrados.forEach(t => {
+      if (!aplicaDocumentoPuesto(t, emp)) return;
       const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
       const est = estadoEfectivo(doc, t);
       if (est === "sin_cargar") { filas.push({ emp, tipoDoc: t, doc: null, nivel: "sin_doc" }); return; }
@@ -2164,6 +2181,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   let vencidos=0, criticos=0, proximos=0, sinDoc=0;
   rol.forEach(({emp}) => {
     tiposDocFiltrados.forEach(t => {
+      if (!aplicaDocumentoPuesto(t, emp)) return;
       const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===t.id);
       const est = estadoEfectivo(doc, t);
       if (est==="sin_cargar") { sinDoc++; return; }
