@@ -155,7 +155,11 @@ function evaluarEmbarque(emp, documentos, tiposDoc) {
 // afuera del cálculo de legajo completo.
 function tiposLegajo(emp, tiposDoc) {
   const oficial = esOficial(emp);
-  return tiposDoc.filter(t => (parseInt(t.codigo, 10) || 999) <= 11 && (!t.solo_oficialidad || oficial));
+  // Legajo completo = documentación base (código 01-11). Título 2 queda
+  // afuera aunque algún día su código caiga en ese rango (es un plus, no un
+  // obligatorio — mismo criterio que evaluarEmbarque). Radiotelefonista, OPB
+  // y "Otros documentos" ya quedan afuera por tener código > 11.
+  return tiposDoc.filter(t => (parseInt(t.codigo, 10) || 999) <= 11 && (!t.solo_oficialidad || oficial) && t.nombre !== "Título 2");
 }
 function legajoPct(emp, documentos, tiposDoc) {
   const aplicables = tiposLegajo(emp, tiposDoc);
@@ -379,6 +383,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 /* ── KPIs ────────────────────────────────────────────────────────────────── */
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}
 .stats-5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.stats-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px}
 .stat-clickable{cursor:pointer;transition:var(--tr)}
 .stat-clickable:hover{background:var(--surface2);border-color:var(--border2)}
@@ -2208,6 +2213,13 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
     .filter(f => f.nivel === nivelFiltro)
     .sort((a,b) => ordenJerarquia(a.emp) - ordenJerarquia(b.emp) || a.emp.apellido_nombre.localeCompare(b.emp.apellido_nombre));
 
+  // KPI: % de legajo completo del rol embarcado (documentación base,
+  // código 01-11 — no cuenta Título 2, Radiotelefonista, OPB ni Otros
+  // documentos, mismo criterio que legajoPct/tiposLegajo).
+  const legajoStats = rol.map(({emp}) => legajoPct(emp, documentos, tiposDoc));
+  const legajoPromedio = legajoStats.length ? Math.round(legajoStats.reduce((s,l)=>s+l.pct,0)/legajoStats.length) : 0;
+  const legajoCompletos = legajoStats.filter(l=>l.pct===100).length;
+
   const handleDesembarcar = async (asign, nombre) => {
     if (!confirm(`¿Marcar a ${nombre} como desembarcado hoy?`)) return;
     try { await api.updateAsignacion(asign.id, { fecha_hasta: fechaHoy() }); onReload(); notify("Tripulante desembarcado"); }
@@ -2281,6 +2293,19 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
               <div className="stat-label">Sin documentar</div><div className="stat-value vf">{sinDoc}</div>
             </div>
           </div>
+
+          {rol.length > 0 && (
+            <div className="stats stats-2" style={{marginBottom:24}}>
+              <div className="stat">
+                <div className="stat-label">% Legajo completo (promedio a bordo)</div>
+                <div className="stat-value" style={{color: legajoPromedio===100?"var(--accent2)":legajoPromedio>=70?"var(--warn)":"var(--danger)"}}>{legajoPromedio}%</div>
+              </div>
+              <div className="stat">
+                <div className="stat-label">Legajos 100% completos</div>
+                <div className="stat-value va">{legajoCompletos}/{rol.length}</div>
+              </div>
+            </div>
+          )}
 
           {nivelFiltro && (
             <div className="card flush" style={{marginBottom:16}}>
