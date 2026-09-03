@@ -157,13 +157,16 @@ function evaluarEmbarque(emp, documentos, tiposDoc) {
 // marineros lo tienen — es el que ya está marcado solo_oficialidad=true).
 // COVID, Fiebre Amarilla y Otros documentos (código 12 en adelante) quedan
 // afuera del cálculo de legajo completo.
+const DOCS_COMPLEMENTARIOS_LEGAJO = ["Título 2", "Certificado Médico Internacional"];
 function tiposLegajo(emp, tiposDoc) {
   const oficial = esOficial(emp);
-  // Legajo completo = documentación base (código 01-11). Título 2 queda
-  // afuera aunque algún día su código caiga en ese rango (es un plus, no un
-  // obligatorio — mismo criterio que evaluarEmbarque). Radiotelefonista, OPB
-  // y "Otros documentos" ya quedan afuera por tener código > 11.
-  return tiposDoc.filter(t => (parseInt(t.codigo, 10) || 999) <= 11 && (!t.solo_oficialidad || oficial) && t.nombre !== "Título 2");
+  // Legajo completo = documentación base (código 01-11), sin la
+  // complementaria: Título 2 (es un plus, no un obligatorio — mismo criterio
+  // que evaluarEmbarque) y Certificado Médico Internacional (solo aplica a
+  // viajes internacionales, no todos los tripulantes lo tienen cargado).
+  // Radiotelefonista, OPB y "Otros documentos" ya quedan afuera por tener
+  // código > 11.
+  return tiposDoc.filter(t => (parseInt(t.codigo, 10) || 999) <= 11 && (!t.solo_oficialidad || oficial) && !DOCS_COMPLEMENTARIOS_LEGAJO.includes(t.nombre));
 }
 function legajoPct(emp, documentos, tiposDoc) {
   const aplicables = tiposLegajo(emp, tiposDoc);
