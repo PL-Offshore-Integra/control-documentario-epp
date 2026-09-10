@@ -2208,15 +2208,22 @@ function ModalCrewList({ proyecto, rol, documentos, tiposDoc, onClose }) {
 // práctica casi nunca coincide con la fecha exacta en que se genera el
 // papel. Preselecciona los que coinciden con la fecha vista en Rol por
 // Buque, como punto de partida.
+const VENTANA_PLANILLA_DIAS = 20;
 function ModalSeleccionPlanilla({ candidatos, fechaDefault, onCancelar, onGenerar }) {
   const keyOf = (c) => c.asign.id + "|" + c.tipo;
   const [sel, setSel] = useState(() => new Set(candidatos.filter(c=>c.fecha===fechaDefault).map(keyOf)));
+  const [verTodos, setVerTodos] = useState(false);
   const toggle = (c) => setSel(prev => {
     const next = new Set(prev);
     const k = keyOf(c);
     next.has(k) ? next.delete(k) : next.add(k);
     return next;
   });
+
+  const diffDias = (f) => Math.round((new Date(f+"T00:00:00") - new Date(fechaDefault+"T00:00:00")) / 86400000);
+  const enVentana = candidatos.filter(c => Math.abs(diffDias(c.fecha)) <= VENTANA_PLANILLA_DIAS);
+  const ocultos = candidatos.length - enVentana.length;
+  const visibles = verTodos ? candidatos : enVentana;
 
   const handleGenerar = () => {
     const elegidos = candidatos.filter(c => sel.has(keyOf(c)));
@@ -2241,19 +2248,33 @@ function ModalSeleccionPlanilla({ candidatos, fechaDefault, onCancelar, onGenera
           {candidatos.length===0 ? (
             <div className="info-box">Este proyecto todavía no tiene embarcos ni desembarcos cargados.</div>
           ) : (
-            <div style={{display:"flex", flexDirection:"column", gap:4, maxHeight:420, overflowY:"auto"}}>
-              {candidatos.map(c => {
-                const k = keyOf(c);
-                return (
-                  <label key={k} style={{display:"flex", alignItems:"center", gap:10, padding:"7px 8px", borderRadius:8, background: sel.has(k)?"var(--bg-hover, #f2f5fa)":"transparent", cursor:"pointer"}}>
-                    <input type="checkbox" checked={sel.has(k)} onChange={()=>toggle(c)} />
-                    <span style={{flex:1}}>{c.emp.apellido_nombre}</span>
-                    <span className={`badge ${c.tipo==="embarca"?"b-green":"b-amber"}`}>{c.tipo==="embarca"?"Embarca":"Desembarca"}</span>
-                    <span style={{fontSize:13, color:"var(--text-muted,#667)"}}>{fmtDate(c.fecha)}</span>
-                  </label>
-                );
-              })}
-            </div>
+            <>
+              <div className="info-box" style={{fontSize:13, marginBottom:10}}>
+                {verTodos
+                  ? "Mostrando todo el historial de embarcos y desembarcos del proyecto."
+                  : `Mostrando movimientos de los últimos/próximos ${VENTANA_PLANILLA_DIAS} días. No se listan los tripulantes que ya están a bordo desde hace más tiempo y no tienen baja programada — no son un "movimiento" para esta planilla.`}
+                {ocultos>0 && !verTodos && (
+                  <> <button className="btn btn-sm btn-ghost" onClick={()=>setVerTodos(true)} style={{fontSize:13, marginTop:6}}>Ver también los {ocultos} más antiguos/lejanos</button></>
+                )}
+                {verTodos && (
+                  <> <button className="btn btn-sm btn-ghost" onClick={()=>setVerTodos(false)} style={{fontSize:13, marginTop:6}}>Volver a la vista acotada</button></>
+                )}
+              </div>
+              <div style={{display:"flex", flexDirection:"column", gap:4, maxHeight:380, overflowY:"auto"}}>
+                {visibles.map(c => {
+                  const k = keyOf(c);
+                  return (
+                    <label key={k} style={{display:"flex", alignItems:"center", gap:10, padding:"7px 8px", borderRadius:8, background: sel.has(k)?"var(--bg-hover, #f2f5fa)":"transparent", cursor:"pointer"}}>
+                      <input type="checkbox" checked={sel.has(k)} onChange={()=>toggle(c)} />
+                      <span style={{flex:1}}>{c.emp.apellido_nombre}</span>
+                      <span className={`badge ${c.tipo==="embarca"?"b-green":"b-amber"}`}>{c.tipo==="embarca"?"Embarca":"Desembarca"}</span>
+                      <span style={{fontSize:13, color:"var(--text-muted,#667)"}}>{fmtDate(c.fecha)}</span>
+                    </label>
+                  );
+                })}
+                {visibles.length===0 && <div className="info-box">No hay movimientos en esta ventana de fechas.</div>}
+              </div>
+            </>
           )}
         </div>
         <div className="mftr">
