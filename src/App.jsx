@@ -2201,6 +2201,70 @@ function ModalCrewList({ proyecto, rol, documentos, tiposDoc, onClose }) {
   );
 }
 
+// ─── MODAL SELECCIÓN PARA PLANILLA EMBARCO/DESEMBARCO ──────────────────────
+// Lista TODOS los movimientos (embarco/desembarco, pasados o futuros) del
+// proyecto para que RRHH elija a mano quién va en esta planilla puntual —
+// no se infiere automáticamente de "movimientos de hoy", porque en la
+// práctica casi nunca coincide con la fecha exacta en que se genera el
+// papel. Preselecciona los que coinciden con la fecha vista en Rol por
+// Buque, como punto de partida.
+function ModalSeleccionPlanilla({ candidatos, fechaDefault, onCancelar, onGenerar }) {
+  const keyOf = (c) => c.asign.id + "|" + c.tipo;
+  const [sel, setSel] = useState(() => new Set(candidatos.filter(c=>c.fecha===fechaDefault).map(keyOf)));
+  const toggle = (c) => setSel(prev => {
+    const next = new Set(prev);
+    const k = keyOf(c);
+    next.has(k) ? next.delete(k) : next.add(k);
+    return next;
+  });
+
+  const handleGenerar = () => {
+    const elegidos = candidatos.filter(c => sel.has(keyOf(c)));
+    const porEmpleado = {};
+    elegidos.forEach(m => { (porEmpleado[m.emp.id + "|" + m.tipo] ||= []).push(m); });
+    const lista = Object.values(porEmpleado).map(arr => arr[0]);
+    const duplicados = Object.values(porEmpleado).filter(arr => arr.length > 1).map(arr => arr[0].emp.apellido_nombre);
+    onGenerar({ lista, duplicados });
+  };
+
+  return (
+    <div className="overlay">
+      <div className="modal" style={{maxWidth:620}}>
+        <div className="mhdr">
+          <div>
+            <div className="mtitle">Elegir movimientos para la planilla</div>
+            <div className="msub">Marcá a quién incluir — embarcos y desembarcos, de cualquier fecha</div>
+          </div>
+          <button className="btn btn-sm btn-ghost" onClick={onCancelar}><Ico d={ICONS.x} size={16}/></button>
+        </div>
+        <div className="mbody">
+          {candidatos.length===0 ? (
+            <div className="info-box">Este proyecto todavía no tiene embarcos ni desembarcos cargados.</div>
+          ) : (
+            <div style={{display:"flex", flexDirection:"column", gap:4, maxHeight:420, overflowY:"auto"}}>
+              {candidatos.map(c => {
+                const k = keyOf(c);
+                return (
+                  <label key={k} style={{display:"flex", alignItems:"center", gap:10, padding:"7px 8px", borderRadius:8, background: sel.has(k)?"var(--bg-hover, #f2f5fa)":"transparent", cursor:"pointer"}}>
+                    <input type="checkbox" checked={sel.has(k)} onChange={()=>toggle(c)} />
+                    <span style={{flex:1}}>{c.emp.apellido_nombre}</span>
+                    <span className={`badge ${c.tipo==="embarca"?"b-green":"b-amber"}`}>{c.tipo==="embarca"?"Embarca":"Desembarca"}</span>
+                    <span style={{fontSize:13, color:"var(--text-muted,#667)"}}>{fmtDate(c.fecha)}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="mftr">
+          <button className="btn btn-ghost" onClick={onCancelar}>Cancelar</button>
+          <button className="btn btn-primary" disabled={sel.size===0} onClick={handleGenerar}>Generar planilla ({sel.size})</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── MODAL PLANILLA EMBARCO/DESEMBARCO (formato PNA) ───────────────────────
 // Se arma con los movimientos (embarco y/o desembarco) del día seleccionado
 // en Rol por Buque — no con todo el rol embarcado, que es lo que ya cubre la
@@ -2375,7 +2439,8 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const [modalProyecto, setModalProyecto] = useState(false);
   const [editarFecha, setEditarFecha] = useState(null);
   const [modalCrewList, setModalCrewList] = useState(false);
-  const [modalPlanilla, setModalPlanilla] = useState(false);
+  const [modalSeleccionPlanilla, setModalSeleccionPlanilla] = useState(false);
+  const [movimientosPlanilla, setMovimientosPlanilla] = useState(null);
   const [desembarcarSel, setDesembarcarSel] = useState(null);
   const [modalEditarProyecto, setModalEditarProyecto] = useState(false);
   const [proyectoIdSel, setProyectoIdSel] = useState("");
@@ -2393,22 +2458,22 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
     .filter(r => r.emp)
     .sort((a,b) => ordenJerarquia(a.emp) - ordenJerarquia(b.emp) || a.emp.apellido_nombre.localeCompare(b.emp.apellido_nombre));
 
-  // Movimientos del día para la Planilla Embarco/Desembarco (formato PNA):
-  // quien embarca ese día (fecha_desde===fecha) y/o quien desembarca ese día
-  // (fecha_hasta===fecha) — deduplicado por tripulante: si hay más de una
-  // asignación de la misma persona cayendo en la misma fecha (normalmente un
-  // dato duplicado a corregir), solo se imprime una fila y se avisa. No el
-  // rol completo, que es lo que ya cubre la
-  // Crew List.
-  const movimientosDiaRaw = !proyectoVer ? [] : asignaciones
-    .filter(a => a.proyecto_id===proyectoVer.id && (a.fecha_desde===fecha || a.fecha_hasta===fecha))
-    .map(a => ({ asign: a, emp: empleados.find(e=>e.id===a.empleado_id), tipo: a.fecha_desde===fecha ? "embarca" : "desembarca" }))
-    .filter(r => r.emp)
-    .sort((a,b) => ordenJerarquia(a.emp) - ordenJerarquia(b.emp) || a.emp.apellido_nombre.localeCompare(b.emp.apellido_nombre));
-  const movimientosPorEmpleado = {};
-  movimientosDiaRaw.forEach(m => { (movimientosPorEmpleado[m.emp.id] ||= []).push(m); });
-  const movimientosDia = Object.values(movimientosPorEmpleado).map(arr => arr[0]);
-  const movimientosDuplicados = Object.values(movimientosPorEmpleado).filter(arr => arr.length > 1).map(arr => arr[0].emp.apellido_nombre);
+  // Candidatos a la Planilla Embarco/Desembarco (formato PNA): TODOS los
+  // embarcos (fecha_desde) y desembarcos (fecha_hasta) del proyecto, pasados
+  // o futuros — no solo los que coinciden con la fecha que se está viendo.
+  // La selección de a quién incluir en cada planilla puntual la hace RRHH a
+  // mano (ver ModalSeleccionPlanilla), porque una planilla real casi nunca
+  // coincide exactamente con "movimientos de hoy".
+  const movimientosCandidatos = !proyectoVer ? [] : asignaciones
+    .filter(a => a.proyecto_id===proyectoVer.id)
+    .flatMap(a => {
+      const emp = empleados.find(e=>e.id===a.empleado_id);
+      if (!emp) return [];
+      const items = [{ asign: a, emp, tipo: "embarca", fecha: a.fecha_desde }];
+      if (a.fecha_hasta) items.push({ asign: a, emp, tipo: "desembarca", fecha: a.fecha_hasta });
+      return items;
+    })
+    .sort((a,b) => (b.fecha||"").localeCompare(a.fecha||"") || ordenJerarquia(a.emp) - ordenJerarquia(b.emp) || a.emp.apellido_nombre.localeCompare(b.emp.apellido_nombre));
 
   const enRolIds = new Set(!proyectoVer ? [] : asignaciones.filter(a=>a.proyecto_id===proyectoVer.id && !a.fecha_hasta).map(a=>a.empleado_id));
   const empleadosDisponibles = empleados.filter(e=>e.activo && !enRolIds.has(e.id));
@@ -2499,8 +2564,8 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
         {proyectoVer && rol.length>0 && (
           <button className="btn btn-accent" onClick={()=>setModalCrewList(true)}>Generar Crew List</button>
         )}
-        {proyectoVer && movimientosDia.length>0 && (
-          <button className="btn btn-accent" onClick={()=>setModalPlanilla(true)}>Generar Planilla Embarco/Desembarco</button>
+        {proyectoVer && movimientosCandidatos.length>0 && (
+          <button className="btn btn-accent" onClick={()=>setModalSeleccionPlanilla(true)}>Generar Planilla Embarco/Desembarco</button>
         )}
         {viendoActivo && (
           <button className="btn btn-primary" onClick={()=>setModalAsignar(true)}><Ico d={ICONS.plus} size={15}/>{fechaEsHoy?"Embarcar tripulante":"Planificar embarque"}</button>
@@ -2733,14 +2798,22 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
           onClose={()=>setModalCrewList(false)}
         />
       )}
-      {modalPlanilla && proyectoVer && (
+      {modalSeleccionPlanilla && proyectoVer && (
+        <ModalSeleccionPlanilla
+          candidatos={movimientosCandidatos}
+          fechaDefault={fecha}
+          onCancelar={()=>setModalSeleccionPlanilla(false)}
+          onGenerar={(seleccionados)=>{ setModalSeleccionPlanilla(false); setMovimientosPlanilla(seleccionados); }}
+        />
+      )}
+      {movimientosPlanilla && proyectoVer && (
         <ModalPlanillaEmbarque
           proyecto={proyectoVer}
-          movimientos={movimientosDia}
-          duplicados={movimientosDuplicados}
+          movimientos={movimientosPlanilla.lista}
+          duplicados={movimientosPlanilla.duplicados}
           documentos={documentos}
           tiposDoc={tiposDoc}
-          onClose={()=>setModalPlanilla(false)}
+          onClose={()=>setMovimientosPlanilla(null)}
         />
       )}
     </div>
