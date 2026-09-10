@@ -1900,10 +1900,11 @@ function PageProyeccionCompras({ empleados, eppTipos, talles }) {
 }
 
 // ─── MODAL ASIGNAR TRIPULANTE A PROYECTO ───────────────────────────────────
-function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, embarcadosOtros, onClose, onSave, notify }) {
+function ModalAsignar({ proyecto, fechaDefault, empleadosDisponibles, documentos, tiposDoc, embarcadosOtros, onClose, onSave, notify }) {
   const [empleadoId, setEmpleadoId] = useState("");
-  const [fechaDesde, setFechaDesde] = useState(fechaHoy());
+  const [fechaDesde, setFechaDesde] = useState(fechaDefault || fechaHoy());
   const [saving, setSaving] = useState(false);
+  const esPlanificado = fechaDesde > fechaHoy();
 
   const empleadoSel = empleadosDisponibles.find(e=>e.id===empleadoId);
   const evalSel = empleadoSel ? evaluarEmbarque(empleadoSel, documentos, tiposDoc) : { nivel1:[], nivel2:[], nivel3:[] };
@@ -1924,7 +1925,7 @@ function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, em
       <div className="modal">
         <div className="mhdr">
           <div>
-            <div className="mtitle">Embarcar tripulante</div>
+            <div className="mtitle">{esPlanificado ? "Planificar embarque" : "Embarcar tripulante"}</div>
             <div className="msub">{proyecto.nombre} · {proyecto.buque}</div>
           </div>
           <button className="mclose" onClick={onClose}>✕</button>
@@ -1963,12 +1964,19 @@ function ModalAsignar({ proyecto, empleadosDisponibles, documentos, tiposDoc, em
                 Documentación incompleta a atender — {empleadoSel.apellido_nombre}: {evalSel.nivel3.join(", ")}.
               </div>
             )}
-            <FG label="Fecha de embarque"><input type="date" value={fechaDesde} onChange={e=>setFechaDesde(e.target.value)}/></FG>
+            <FG label="Fecha de embarque">
+              <input type="date" value={fechaDesde} onChange={e=>setFechaDesde(e.target.value)}/>
+              {esPlanificado && (
+                <div className="text-muted" style={{fontSize:12,marginTop:4}}>
+                  Fecha futura: no va a aparecer en el rol de hoy ni en la dotación de hoy — recién a partir del {fmtDate(fechaDesde)}.
+                </div>
+              )}
+            </FG>
           </div>
         </div>
         <div className="mftr">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"Embarcar"}</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":esPlanificado?"Planificar embarque":"Embarcar"}</button>
         </div>
       </div>
     </div>
@@ -2200,7 +2208,7 @@ function ModalCrewList({ proyecto, rol, documentos, tiposDoc, onClose }) {
 // (Agencia Marítima, Matrícula, Bandera, Responsable PNA, Foja, Foja Mov.
 // Libro Rol) se completa a mano — encabezado con campos para tipearlo antes
 // de imprimir, filas en blanco para completar en papel.
-function ModalPlanillaEmbarque({ proyecto, movimientos, tiposDoc, documentos, onClose }) {
+function ModalPlanillaEmbarque({ proyecto, movimientos, duplicados, tiposDoc, documentos, onClose }) {
   const datosBuque = DATOS_BUQUE[proyecto.buque] || { bandera: "", matricula: "" };
   const [enc, setEnc] = useState({ agencia: "", mat: datosBuque.matricula, bandera: datosBuque.bandera, responsable: "" });
   const setEncVal = (k, v) => setEnc(p => ({ ...p, [k]: v }));
@@ -2247,16 +2255,18 @@ function ModalPlanillaEmbarque({ proyecto, movimientos, tiposDoc, documentos, on
           {filas.length === 0 && (
             <div className="empty-state no-print">No hay embarcos ni desembarcos registrados en la fecha seleccionada de Rol por Buque.</div>
           )}
+          {duplicados?.length > 0 && (
+            <div className="warning-box no-print" style={{marginBottom:16}}>
+              ⚠ {duplicados.join(", ")}: hay más de una asignación cayendo en esta fecha para la misma persona. Se imprime una sola fila — conviene revisar y corregir el duplicado en Rol por Buque.
+            </div>
+          )}
           <div className="crewlist-print">
-            <div style={{textAlign:"center",fontWeight:700,fontSize:16,marginBottom:12,letterSpacing:"1px",textDecoration:"underline"}}>PLANILLA EMBARCO/DESEMBARCO</div>
-            <table style={{width:"100%",fontSize:12,borderCollapse:"collapse",marginBottom:10}} border="1" cellPadding="4">
-              <tbody>
-                <tr><td colSpan={2}><strong>AGENCIA MARÍTIMA:</strong> {enc.agencia}</td></tr>
-                <tr><td><strong>BUQUE:</strong> {proyecto.buque}</td><td><strong>MAT:</strong> {enc.mat}</td></tr>
-                <tr><td colSpan={2}><strong>BANDERA:</strong> {enc.bandera}</td></tr>
-                <tr><td colSpan={2}><strong>RESPONSABLE PNA:</strong> {enc.responsable}</td></tr>
-              </tbody>
-            </table>
+            <div style={{textAlign:"center",fontWeight:700,fontSize:15,marginBottom:10,letterSpacing:"1px",textDecoration:"underline"}}>PLANILLA EMBARCO/DESEMBARCO</div>
+            <div style={{fontSize:11,lineHeight:1.7,marginBottom:10}}>
+              <div><strong>AGENCIA MARÍTIMA:</strong> {enc.agencia}</div>
+              <div><strong>BUQUE:</strong> {proyecto.buque} &nbsp;&nbsp; <strong>MAT:</strong> {enc.mat} &nbsp;&nbsp; <strong>BANDERA:</strong> {enc.bandera}</div>
+              <div><strong>RESPONSABLE PNA:</strong> {enc.responsable}</div>
+            </div>
             <table style={{width:"100%",fontSize:9,borderCollapse:"collapse"}} border="1" cellPadding="3">
               <thead>
                 <tr>
@@ -2296,6 +2306,66 @@ function ModalPlanillaEmbarque({ proyecto, movimientos, tiposDoc, documentos, on
   );
 }
 
+// ─── MODAL DESEMBARCAR (con fecha elegible — hoy o a futuro) ───────────────
+function ModalDesembarcar({ asign, nombre, fechaDefault, onClose, onSave, notify }) {
+  const yaProgramado = !!asign.fecha_hasta;
+  const [fechaHasta, setFechaHasta] = useState(asign.fecha_hasta || (fechaDefault && fechaDefault > fechaHoy() ? fechaDefault : fechaHoy()));
+  const [saving, setSaving] = useState(false);
+  const esPlanificado = fechaHasta > fechaHoy();
+
+  const handleSave = async () => {
+    if (!fechaHasta) { notify("Elegí una fecha"); return; }
+    if (fechaHasta < asign.fecha_desde) { notify("La fecha de desembarco no puede ser anterior a la de embarco"); return; }
+    setSaving(true);
+    try {
+      await api.updateAsignacion(asign.id, { fecha_hasta: fechaHasta });
+      onSave(esPlanificado); onClose();
+    } catch(e) { notify("Error: "+e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleQuitar = async () => {
+    if (!confirm(`¿Quitar la baja programada de ${nombre}? Vuelve a quedar a bordo sin fecha de desembarco.`)) return;
+    setSaving(true);
+    try {
+      await api.updateAsignacion(asign.id, { fecha_hasta: null });
+      onSave(false); onClose(); notify("Baja programada quitada");
+    } catch(e) { notify("Error: "+e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="overlay">
+      <div className="modal">
+        <div className="mhdr">
+          <div>
+            <div className="mtitle">{esPlanificado ? "Planificar desembarco" : "Desembarcar"}</div>
+            <div className="msub">{nombre}</div>
+          </div>
+          <button className="mclose" onClick={onClose}>✕</button>
+        </div>
+        <div className="mbody">
+          <div className="form-single">
+            <FG label="Fecha de desembarco *">
+              <input type="date" value={fechaHasta} onChange={e=>setFechaHasta(e.target.value)}/>
+              {esPlanificado && (
+                <div className="text-muted" style={{fontSize:12,marginTop:4}}>
+                  Fecha futura: sigue figurando a bordo en el rol de hoy — recién sale a partir del {fmtDate(fechaHasta)}.
+                </div>
+              )}
+            </FG>
+          </div>
+        </div>
+        <div className="mftr">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          {yaProgramado && <button className="btn btn-ghost" onClick={handleQuitar} disabled={saving}>Quitar baja programada</button>}
+          <button className="btn btn-danger" onClick={handleSave} disabled={saving}>{saving?"Guardando...":esPlanificado?"Planificar desembarco":"Desembarcar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── PAGE: ROL POR BUQUE ────────────────────────────────────────────────────
 function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones, onReload, notify, onVerEmpleado }) {
   const [buque, setBuque] = useState(BUQUES[0]);
@@ -2306,6 +2376,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const [editarFecha, setEditarFecha] = useState(null);
   const [modalCrewList, setModalCrewList] = useState(false);
   const [modalPlanilla, setModalPlanilla] = useState(false);
+  const [desembarcarSel, setDesembarcarSel] = useState(null);
   const [modalEditarProyecto, setModalEditarProyecto] = useState(false);
   const [proyectoIdSel, setProyectoIdSel] = useState("");
   const [nivelFiltro, setNivelFiltro] = useState("");
@@ -2324,13 +2395,20 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
 
   // Movimientos del día para la Planilla Embarco/Desembarco (formato PNA):
   // quien embarca ese día (fecha_desde===fecha) y/o quien desembarca ese día
-  // (fecha_hasta===fecha) — no el rol completo, que es lo que ya cubre la
+  // (fecha_hasta===fecha) — deduplicado por tripulante: si hay más de una
+  // asignación de la misma persona cayendo en la misma fecha (normalmente un
+  // dato duplicado a corregir), solo se imprime una fila y se avisa. No el
+  // rol completo, que es lo que ya cubre la
   // Crew List.
-  const movimientosDia = !proyectoVer ? [] : asignaciones
+  const movimientosDiaRaw = !proyectoVer ? [] : asignaciones
     .filter(a => a.proyecto_id===proyectoVer.id && (a.fecha_desde===fecha || a.fecha_hasta===fecha))
     .map(a => ({ asign: a, emp: empleados.find(e=>e.id===a.empleado_id), tipo: a.fecha_desde===fecha ? "embarca" : "desembarca" }))
     .filter(r => r.emp)
     .sort((a,b) => ordenJerarquia(a.emp) - ordenJerarquia(b.emp) || a.emp.apellido_nombre.localeCompare(b.emp.apellido_nombre));
+  const movimientosPorEmpleado = {};
+  movimientosDiaRaw.forEach(m => { (movimientosPorEmpleado[m.emp.id] ||= []).push(m); });
+  const movimientosDia = Object.values(movimientosPorEmpleado).map(arr => arr[0]);
+  const movimientosDuplicados = Object.values(movimientosPorEmpleado).filter(arr => arr.length > 1).map(arr => arr[0].emp.apellido_nombre);
 
   const enRolIds = new Set(!proyectoVer ? [] : asignaciones.filter(a=>a.proyecto_id===proyectoVer.id && !a.fecha_hasta).map(a=>a.empleado_id));
   const empleadosDisponibles = empleados.filter(e=>e.activo && !enRolIds.has(e.id));
@@ -2374,11 +2452,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const legajoPromedio = legajoStats.length ? Math.round(legajoStats.reduce((s,l)=>s+l.pct,0)/legajoStats.length) : 0;
   const legajoCompletos = legajoStats.filter(l=>l.pct===100).length;
 
-  const handleDesembarcar = async (asign, nombre) => {
-    if (!confirm(`¿Marcar a ${nombre} como desembarcado hoy?`)) return;
-    try { await api.updateAsignacion(asign.id, { fecha_hasta: fechaHoy() }); onReload(); notify("Tripulante desembarcado"); }
-    catch(e) { notify("Error: "+e.message); }
-  };
+  const handleDesembarcar = (asign, nombre) => setDesembarcarSel({ asign, nombre });
 
   const handleReabrirProyecto = async () => {
     if (!proyectoVer) return;
@@ -2428,8 +2502,8 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
         {proyectoVer && movimientosDia.length>0 && (
           <button className="btn btn-accent" onClick={()=>setModalPlanilla(true)}>Generar Planilla Embarco/Desembarco</button>
         )}
-        {viendoActivo && fechaEsHoy && (
-          <button className="btn btn-primary" onClick={()=>setModalAsignar(true)}><Ico d={ICONS.plus} size={15}/>Embarcar tripulante</button>
+        {viendoActivo && (
+          <button className="btn btn-primary" onClick={()=>setModalAsignar(true)}><Ico d={ICONS.plus} size={15}/>{fechaEsHoy?"Embarcar tripulante":"Planificar embarque"}</button>
         )}
       </div>
 
@@ -2538,13 +2612,16 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                   </thead>
                   <tbody>
                     {rol.map(({asign, emp}) => {
-                      const bajo = asign.fecha_hasta && !fechaEsHoy;
+                      // Si aparece en "rol" con fecha_hasta cargada, es porque todavía no
+                      // llegó esa fecha (el filtro de rol ya excluye a quien ya bajó) — es
+                      // un desembarco programado a futuro, no uno pasado.
+                      const bajo = asign.fecha_hasta;
                       if (tipoDocumento) {
                         const t = tiposDoc.find(x=>x.id===tipoDocumento);
                         const doc = documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===tipoDocumento);
                         return (
                           <tr key={asign.id}>
-                            <td style={{fontWeight:500,paddingLeft:24}}>{emp.apellido_nombre}{bajo && <span className="text-muted" style={{fontSize:11}}> (bajó {fmtDate(asign.fecha_hasta)})</span>}</td>
+                            <td style={{fontWeight:500,paddingLeft:24}}>{emp.apellido_nombre}{bajo && <span className="text-muted" style={{fontSize:11}}> (baja programada {fmtDate(asign.fecha_hasta)})</span>}</td>
                             <td className="text-muted">{catsLabel(emp)}</td>
                             <td className="text-mono">{fmtDate(asign.fecha_desde)}</td>
                             <td className="text-mono">{doc?.fecha_vto ? fmtDate(doc.fecha_vto) : "—"}</td>
@@ -2562,7 +2639,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                               <div className="row-actions">
                                 <button className="btn btn-sm btn-ghost" onClick={()=>onVerEmpleado(emp)}>Ver legajo</button>
                                 {!asign.fecha_hasta && <button className="btn btn-sm btn-ghost" onClick={()=>setEditarFecha({asign, nombre:emp.apellido_nombre})}>Editar fecha</button>}
-                                {!asign.fecha_hasta && <button className="btn btn-sm btn-danger" onClick={()=>handleDesembarcar(asign, emp.apellido_nombre)}>Desembarcar</button>}
+                                <button className="btn btn-sm btn-danger" onClick={()=>handleDesembarcar(asign, emp.apellido_nombre)}>{asign.fecha_hasta?"Editar baja":"Desembarcar"}</button>
                               </div>
                             </td>
                           </tr>
@@ -2572,7 +2649,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                       const color = pct===100?"var(--accent2)":pct>=70?"var(--warn)":"var(--danger)";
                       return (
                         <tr key={asign.id}>
-                          <td style={{fontWeight:500,paddingLeft:24}}>{emp.apellido_nombre}{bajo && <span className="text-muted" style={{fontSize:11}}> (bajó {fmtDate(asign.fecha_hasta)})</span>}</td>
+                          <td style={{fontWeight:500,paddingLeft:24}}>{emp.apellido_nombre}{bajo && <span className="text-muted" style={{fontSize:11}}> (baja programada {fmtDate(asign.fecha_hasta)})</span>}</td>
                           <td className="text-muted">{catsLabel(emp)}</td>
                           <td className="text-mono">{fmtDate(asign.fecha_desde)}</td>
                           <td>
@@ -2584,7 +2661,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
                           <td style={{paddingRight:24}}>
                             <div className="row-actions">
                               <button className="btn btn-sm btn-ghost" onClick={()=>onVerEmpleado(emp)}>Ver legajo</button>
-                              {!asign.fecha_hasta && <button className="btn btn-sm btn-danger" onClick={()=>handleDesembarcar(asign, emp.apellido_nombre)}>Desembarcar</button>}
+                              <button className="btn btn-sm btn-danger" onClick={()=>handleDesembarcar(asign, emp.apellido_nombre)}>{asign.fecha_hasta?"Editar baja":"Desembarcar"}</button>
                             </div>
                           </td>
                         </tr>
@@ -2601,12 +2678,23 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
       {modalAsignar && proyectoActivo && (
         <ModalAsignar
           proyecto={proyectoActivo}
+          fechaDefault={fecha}
           empleadosDisponibles={empleadosDisponibles}
           documentos={documentos}
           tiposDoc={tiposDoc}
           embarcadosOtros={embarcadosOtros}
           onClose={()=>setModalAsignar(false)}
-          onSave={()=>{ onReload(); notify("Tripulante embarcado"); }}
+          onSave={()=>{ onReload(); notify(fecha===fechaHoy() ? "Tripulante embarcado" : `Embarque planificado para el ${fmtDate(fecha)}`); }}
+          notify={notify}
+        />
+      )}
+      {desembarcarSel && (
+        <ModalDesembarcar
+          asign={desembarcarSel.asign}
+          nombre={desembarcarSel.nombre}
+          fechaDefault={fecha}
+          onClose={()=>setDesembarcarSel(null)}
+          onSave={(planificado)=>{ onReload(); notify(planificado ? "Desembarco planificado" : "Tripulante desembarcado"); }}
           notify={notify}
         />
       )}
@@ -2649,6 +2737,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
         <ModalPlanillaEmbarque
           proyecto={proyectoVer}
           movimientos={movimientosDia}
+          duplicados={movimientosDuplicados}
           documentos={documentos}
           tiposDoc={tiposDoc}
           onClose={()=>setModalPlanilla(false)}
