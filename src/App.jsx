@@ -808,6 +808,14 @@ const TITULOS_POSIBLES = [
 // ─── BUQUES ────────────────────────────────────────────────────────────────
 // Igual que CATEGORIAS: lista fija en código, no tabla aparte, porque son solo dos.
 const BUQUES = ["Atlantic Dama", "Golondrina de Mar"];
+// Datos fijos por buque para la Planilla Embarco/Desembarco (no cambian
+// embarque a embarque, a diferencia de Agencia Marítima y Responsable PNA).
+// Golondrina de Mar: confirmar bandera y matrícula — quedan vacíos hasta
+// entonces, se completan a mano como antes.
+const DATOS_BUQUE = {
+  "Atlantic Dama": { bandera: "Argentina", matricula: "350" },
+  "Golondrina de Mar": { bandera: "", matricula: "" },
+};
 
 // ─── MODAL EMPLEADO ────────────────────────────────────────────────────────
 // Separa "apellido_nombre" existente en apellido / nombre (heurística: primera palabra = apellido).
@@ -825,7 +833,7 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
       const categorias = Array.isArray(emp.categorias) ? emp.categorias : (emp.categoria ? [emp.categoria] : []);
       return { ...emp, apellido, nombre, categorias };
     }
-    return { apellido:"", nombre:"", dni:"", libreta:"", categorias:[], tipo:"efectivo", activo:true };
+    return { apellido:"", nombre:"", dni:"", libreta:"", email:"", categorias:[], tipo:"efectivo", activo:true };
   });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(p => ({...p,[k]:v}));
@@ -837,10 +845,12 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
     if (!form.apellido.trim()) { notify("Ingresá el apellido"); return; }
     if (!form.nombre.trim()) { notify("Ingresá el nombre"); return; }
     if (categoriasSel.length === 0) { notify("Elegí el rol de embarque"); return; }
+    const emailTrim = (form.email || "").trim();
+    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) { notify("El email no parece válido — revisalo"); return; }
     setSaving(true);
     try {
       const { apellido, nombre, ...resto } = form;
-      const payload = { ...resto, apellido_nombre: `${apellido.trim()} ${nombre.trim()}`.trim() };
+      const payload = { ...resto, email: emailTrim || null, apellido_nombre: `${apellido.trim()} ${nombre.trim()}`.trim() };
       const saved = await api.upsertEmpleado(payload);
       onSave(saved); onClose();
     }
@@ -861,6 +871,7 @@ function ModalEmpleado({ emp, onClose, onSave, notify }) {
             <FG label="Nombre *"><input value={form.nombre} onChange={e=>set("nombre",e.target.value)}/></FG>
             <FG label="DNI"><input value={form.dni||""} onChange={e=>set("dni",e.target.value)}/></FG>
             <FG label="Libreta"><input value={form.libreta||""} onChange={e=>set("libreta",e.target.value)}/></FG>
+            <FG label="Email"><input type="email" value={form.email||""} onChange={e=>set("email",e.target.value)} placeholder="tripulante@ejemplo.com"/></FG>
             <FG label="Tipo">
               <select value={form.tipo} onChange={e=>set("tipo",e.target.value)}>
                 <option value="efectivo">Efectivo</option>
@@ -1103,7 +1114,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
         <div className="mhdr">
           <div>
             <div className="mtitle">{empleado.apellido_nombre}</div>
-            <div className="msub">{catsLabel(empleado)} · {empleado.tipo} · DNI {empleado.dni} · Libreta {empleado.libreta}</div>
+            <div className="msub">{catsLabel(empleado)} · {empleado.tipo} · DNI {empleado.dni} · Libreta {empleado.libreta} · {empleado.email || "sin email cargado"}</div>
           </div>
           <button className="mclose" onClick={onClose}>✕</button>
         </div>
@@ -1587,9 +1598,9 @@ function PageEmpleados({ tipo, empleados, documentos, tiposDoc, titulos, onReloa
         <div className="card-title">{lista.length} {tipo}{lista.length===1?"":"s"} en registro</div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th style={{paddingLeft:24}}>Nombre</th><th>Rol de embarque</th><th>DNI</th><th>Libreta</th><th>Documentación</th><th></th></tr></thead>
+            <thead><tr><th style={{paddingLeft:24}}>Nombre</th><th>Rol de embarque</th><th>DNI</th><th>Libreta</th><th>Email</th><th>Documentación</th><th></th></tr></thead>
             <tbody>
-              {lista.length===0 && <tr><td colSpan={6} className="empty-state">No hay {tipo}s registrados.</td></tr>}
+              {lista.length===0 && <tr><td colSpan={7} className="empty-state">No hay {tipo}s registrados.</td></tr>}
               {lista.map(emp=>{
                 const {ok,total,pct} = getPct(emp);
                 const color = pct===100?"var(--accent2)":pct>=70?"var(--warn)":"var(--danger)";
@@ -1599,6 +1610,7 @@ function PageEmpleados({ tipo, empleados, documentos, tiposDoc, titulos, onReloa
                     <td className="text-muted">{catsLabel(emp)}</td>
                     <td className="text-mono">{emp.dni}</td>
                     <td className="text-mono">{emp.libreta}</td>
+                    <td>{emp.email ? <span className="text-mono" style={{fontSize:12}}>{emp.email}</span> : <span className="badge b-amber">Sin email</span>}</td>
                     <td>
                       <div className="flex-gap">
                         <div className="kbar-track"><div className="kbar-fill" style={{width:`${pct}%`,background:color}}/></div>
@@ -2181,6 +2193,109 @@ function ModalCrewList({ proyecto, rol, documentos, tiposDoc, onClose }) {
   );
 }
 
+// ─── MODAL PLANILLA EMBARCO/DESEMBARCO (formato PNA) ───────────────────────
+// Se arma con los movimientos (embarco y/o desembarco) del día seleccionado
+// en Rol por Buque — no con todo el rol embarcado, que es lo que ya cubre la
+// Crew List. Los datos salen del legajo; lo que no existe en el sistema
+// (Agencia Marítima, Matrícula, Bandera, Responsable PNA, Foja, Foja Mov.
+// Libro Rol) se completa a mano — encabezado con campos para tipearlo antes
+// de imprimir, filas en blanco para completar en papel.
+function ModalPlanillaEmbarque({ proyecto, movimientos, tiposDoc, documentos, onClose }) {
+  const datosBuque = DATOS_BUQUE[proyecto.buque] || { bandera: "", matricula: "" };
+  const [enc, setEnc] = useState({ agencia: "", mat: datosBuque.matricula, bandera: datosBuque.bandera, responsable: "" });
+  const setEncVal = (k, v) => setEnc(p => ({ ...p, [k]: v }));
+
+  const tTitulo1 = tiposDoc.find(t => t.nombre === "Título 1");
+  const tLibreta = tiposDoc.find(t => t.nombre === "Libreta de Embarque");
+  const tCertLibreta = tiposDoc.find(t => t.nombre === "Certificado Médico de Libreta");
+
+  const filas = movimientos.map(({ asign, emp, tipo }) => {
+    const docTitulo = tTitulo1 && documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===tTitulo1.id);
+    const docLibreta = tLibreta && documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===tLibreta.id);
+    const docCertLibreta = tCertLibreta && documentos.find(d=>d.empleado_id===emp.id&&d.tipo_documento_id===tCertLibreta.id);
+    const detLibreta = docLibreta?.detalle || {};
+    const singladura = asign.fecha_hasta
+      ? Math.round((new Date(asign.fecha_hasta+"T00:00:00") - new Date(asign.fecha_desde+"T00:00:00")) / (1000*60*60*24))
+      : null;
+    return {
+      emp, asign, tipo,
+      habilitacion: docTitulo?.detalle?.titulo_elegido || "",
+      censo: docLibreta ? (detLibreta.censo ? "SI" : "NO") : "",
+      rmed: docCertLibreta?.fecha_vto ? fmtDate(docCertLibreta.fecha_vto) : "",
+      singladura,
+      vencCedula: detLibreta.fecha_cedula ? fmtDate(detLibreta.fecha_cedula) : "",
+    };
+  });
+
+  return (
+    <div className="overlay">
+      <div className="modal" style={{maxWidth:1150}}>
+        <div className="mhdr no-print">
+          <div>
+            <div className="mtitle">Planilla Embarco/Desembarco — {proyecto.buque}</div>
+            <div className="msub">{proyecto.nombre}</div>
+          </div>
+          <button className="mclose" onClick={onClose}>✕</button>
+        </div>
+        <div className="mbody">
+          <div className="form-grid no-print" style={{marginBottom:16}}>
+            <FG label="Agencia Marítima"><input value={enc.agencia} onChange={e=>setEncVal("agencia",e.target.value)}/></FG>
+            <FG label="Matrícula"><input value={enc.mat} onChange={e=>setEncVal("mat",e.target.value)}/></FG>
+            <FG label="Bandera"><input value={enc.bandera} onChange={e=>setEncVal("bandera",e.target.value)}/></FG>
+            <FG label="Responsable PNA"><input value={enc.responsable} onChange={e=>setEncVal("responsable",e.target.value)}/></FG>
+          </div>
+          {filas.length === 0 && (
+            <div className="empty-state no-print">No hay embarcos ni desembarcos registrados en la fecha seleccionada de Rol por Buque.</div>
+          )}
+          <div className="crewlist-print">
+            <div style={{textAlign:"center",fontWeight:700,fontSize:16,marginBottom:12,letterSpacing:"1px",textDecoration:"underline"}}>PLANILLA EMBARCO/DESEMBARCO</div>
+            <table style={{width:"100%",fontSize:12,borderCollapse:"collapse",marginBottom:10}} border="1" cellPadding="4">
+              <tbody>
+                <tr><td colSpan={2}><strong>AGENCIA MARÍTIMA:</strong> {enc.agencia}</td></tr>
+                <tr><td><strong>BUQUE:</strong> {proyecto.buque}</td><td><strong>MAT:</strong> {enc.mat}</td></tr>
+                <tr><td colSpan={2}><strong>BANDERA:</strong> {enc.bandera}</td></tr>
+                <tr><td colSpan={2}><strong>RESPONSABLE PNA:</strong> {enc.responsable}</td></tr>
+              </tbody>
+            </table>
+            <table style={{width:"100%",fontSize:9,borderCollapse:"collapse"}} border="1" cellPadding="3">
+              <thead>
+                <tr>
+                  <th>NOMBRE Y APELLIDO</th><th>DNI</th><th>HABILITACION</th><th>FOJA</th><th>CENSO</th>
+                  <th>R.MED</th><th>FECHA EMBARCO</th><th>FECHA DESEMBARCO</th><th>FOJA MOV.<br/>LIBRO ROL</th>
+                  <th>EMPLEO<br/>A BORDO</th><th>SING.</th><th>N° LE</th><th>VENC.<br/>CEDULA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filas.map((f,i) => (
+                  <tr key={f.asign.id}>
+                    <td>{f.emp.apellido_nombre}</td>
+                    <td>{f.emp.dni}</td>
+                    <td>{f.habilitacion}</td>
+                    <td></td>
+                    <td style={{textAlign:"center"}}>{f.censo}</td>
+                    <td>{f.rmed}</td>
+                    <td>{f.tipo==="embarca" ? fmtDate(f.asign.fecha_desde) : ""}</td>
+                    <td>{f.tipo==="desembarca" ? fmtDate(f.asign.fecha_hasta) : ""}</td>
+                    <td></td>
+                    <td>{catsLabel(f.emp)}</td>
+                    <td style={{textAlign:"center"}}>{f.singladura!=null ? f.singladura : ""}</td>
+                    <td>{f.emp.libreta}</td>
+                    <td>{f.vencCedula}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="mftr no-print">
+          <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
+          <button className="btn btn-primary" onClick={()=>window.print()} disabled={filas.length===0}>Imprimir / Guardar PDF</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── PAGE: ROL POR BUQUE ────────────────────────────────────────────────────
 function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones, onReload, notify, onVerEmpleado }) {
   const [buque, setBuque] = useState(BUQUES[0]);
@@ -2190,6 +2305,7 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const [modalProyecto, setModalProyecto] = useState(false);
   const [editarFecha, setEditarFecha] = useState(null);
   const [modalCrewList, setModalCrewList] = useState(false);
+  const [modalPlanilla, setModalPlanilla] = useState(false);
   const [modalEditarProyecto, setModalEditarProyecto] = useState(false);
   const [proyectoIdSel, setProyectoIdSel] = useState("");
   const [nivelFiltro, setNivelFiltro] = useState("");
@@ -2203,6 +2319,16 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
   const rol = !proyectoVer ? [] : asignaciones
     .filter(a => a.proyecto_id===proyectoVer.id && a.fecha_desde<=fecha && (!a.fecha_hasta || a.fecha_hasta>fecha))
     .map(a => ({ asign: a, emp: empleados.find(e=>e.id===a.empleado_id) }))
+    .filter(r => r.emp)
+    .sort((a,b) => ordenJerarquia(a.emp) - ordenJerarquia(b.emp) || a.emp.apellido_nombre.localeCompare(b.emp.apellido_nombre));
+
+  // Movimientos del día para la Planilla Embarco/Desembarco (formato PNA):
+  // quien embarca ese día (fecha_desde===fecha) y/o quien desembarca ese día
+  // (fecha_hasta===fecha) — no el rol completo, que es lo que ya cubre la
+  // Crew List.
+  const movimientosDia = !proyectoVer ? [] : asignaciones
+    .filter(a => a.proyecto_id===proyectoVer.id && (a.fecha_desde===fecha || a.fecha_hasta===fecha))
+    .map(a => ({ asign: a, emp: empleados.find(e=>e.id===a.empleado_id), tipo: a.fecha_desde===fecha ? "embarca" : "desembarca" }))
     .filter(r => r.emp)
     .sort((a,b) => ordenJerarquia(a.emp) - ordenJerarquia(b.emp) || a.emp.apellido_nombre.localeCompare(b.emp.apellido_nombre));
 
@@ -2298,6 +2424,9 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
         <button className="btn btn-ghost" onClick={()=>setModalProyecto(true)}>{proyectoActivo?"Nuevo proyecto":"Crear proyecto"}</button>
         {proyectoVer && rol.length>0 && (
           <button className="btn btn-accent" onClick={()=>setModalCrewList(true)}>Generar Crew List</button>
+        )}
+        {proyectoVer && movimientosDia.length>0 && (
+          <button className="btn btn-accent" onClick={()=>setModalPlanilla(true)}>Generar Planilla Embarco/Desembarco</button>
         )}
         {viendoActivo && fechaEsHoy && (
           <button className="btn btn-primary" onClick={()=>setModalAsignar(true)}><Ico d={ICONS.plus} size={15}/>Embarcar tripulante</button>
@@ -2514,6 +2643,15 @@ function PageRolBuque({ empleados, documentos, tiposDoc, proyectos, asignaciones
           documentos={documentos}
           tiposDoc={tiposDoc}
           onClose={()=>setModalCrewList(false)}
+        />
+      )}
+      {modalPlanilla && proyectoVer && (
+        <ModalPlanillaEmbarque
+          proyecto={proyectoVer}
+          movimientos={movimientosDia}
+          documentos={documentos}
+          tiposDoc={tiposDoc}
+          onClose={()=>setModalPlanilla(false)}
         />
       )}
     </div>
