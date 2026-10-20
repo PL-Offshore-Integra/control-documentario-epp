@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import JSZip from "jszip";
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, AlignmentType, PageOrientation } from "docx";
 import { supabase } from "./lib/supabase";
+import { ArchivoLink, firmarUrl } from "./lib/archivos";
 
 const PORTAL_URL = "https://integra.ploffshore.com";
 const fmtDate = d => d ? new Date(d + "T00:00:00").toLocaleDateString("es-AR") : "—";
@@ -1068,7 +1069,7 @@ function ModalDocumento({ doc, empleadoId, emp, tiposDoc, onClose, onSave, notif
             <FG label="Adjuntar archivo (PDF, imagen)">
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e=>setFile(e.target.files[0])}/>
               {form.archivo_url && !file && (
-                <a className="link" href={form.archivo_url} target="_blank" rel="noreferrer" style={{marginTop:6}}>Ver archivo actual</a>
+                <ArchivoLink className="link" href={form.archivo_url} target="_blank" rel="noreferrer" style={{marginTop:6}}>Ver archivo actual</ArchivoLink>
               )}
             </FG>
             <FG label="Notas"><textarea rows={2} value={form.notas||""} onChange={e=>set("notas",e.target.value)}/></FG>
@@ -1159,7 +1160,7 @@ function ModalDetalleEmpleado({ empleado, tiposDoc, documentos, onClose, onDocCh
                     </td>
                     <td>
                       {doc?.archivo_url
-                        ? <a className="link" href={doc.archivo_url} target="_blank" rel="noreferrer">Ver archivo</a>
+                        ? <ArchivoLink className="link" href={doc.archivo_url} target="_blank" rel="noreferrer">Ver archivo</ArchivoLink>
                         : <span className="text-muted">—</span>}
                     </td>
                     <td>
@@ -1823,7 +1824,7 @@ function PageEntregasEPP({ empleados, eppTipos, talles, onReload, notify }) {
                       <td>{ent.firmado ? <span className="badge b-green">Firmada</span> : <span className="badge b-amber">Pendiente firma</span>}</td>
                       <td>
                         {ent.constancia_url
-                          ? <a className="link" href={ent.constancia_url} target="_blank" rel="noreferrer">Ver constancia</a>
+                          ? <ArchivoLink className="link" href={ent.constancia_url} target="_blank" rel="noreferrer">Ver constancia</ArchivoLink>
                           : <span className="text-muted">Sin adjunto</span>}
                       </td>
                       <td style={{paddingRight:24}}>
@@ -2973,7 +2974,7 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
       let fallas = 0;
       for (const it of items) {
         try {
-          const res = await fetch(it.url);
+          const res = await fetch(await firmarUrl(it.url));
           if (!res.ok) throw new Error("no se pudo bajar");
           const blob = await res.blob();
           const ext = (it.url.split(".").pop() || "pdf").split("?")[0];
@@ -3061,7 +3062,7 @@ function PagePresentarDocumentacion({ empleados, documentos, tiposDoc, proyectos
                           {!c.doc || !c.doc.archivo_url ? <span className="badge b-red">Sin cargar</span>
                             : c.doc.fecha_vto ? <DiasChip fechaStr={c.doc.fecha_vto}/>
                             : <span className="badge b-green">Vigente</span>}
-                          {c.doc?.archivo_url && <div style={{marginTop:4}}><a className="link" href={c.doc.archivo_url} target="_blank" rel="noreferrer">Ver</a></div>}
+                          {c.doc?.archivo_url && <div style={{marginTop:4}}><ArchivoLink className="link" href={c.doc.archivo_url} target="_blank" rel="noreferrer">Ver</ArchivoLink></div>}
                         </td>
                       ))}
                     </tr>
